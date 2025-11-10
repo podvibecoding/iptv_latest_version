@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const logger = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -60,9 +61,7 @@ app.options('*', cors(corsOptions));
 
 // Lightweight request logger (helps diagnose CORS/preflight issues in dev)
 app.use((req, res, next) => {
-  if (!isProd) {
-    console.log(`[req] ${req.method} ${req.path} origin=${req.headers.origin || 'n/a'}`);
-  }
+  logger.http(req.method, req.path);
   next();
 });
 app.use(express.json());
@@ -108,7 +107,7 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error('Server error:', err);
+  logger.error('Server error:', err);
   res.status(500).json({ 
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -117,7 +116,7 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`
+  logger.success(`
 ╔════════════════════════════════════════╗
 ║   IPTV Backend Server                  ║
 ║   Port: ${PORT}                       ║

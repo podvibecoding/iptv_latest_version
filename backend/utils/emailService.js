@@ -1,6 +1,6 @@
-const nodemailer = require('nodemailer')
-// import dotenv to load env variables
-require('dotenv').config()
+const nodemailer = require('nodemailer');
+const logger = require('./logger');
+require('dotenv').config();
 
 // Create reusable transporter
 const createTransporter = () => {
@@ -75,10 +75,10 @@ async function sendOtpEmail(email, otp) {
     }
 
     const info = await transporter.sendMail(mailOptions)
-    console.log('✅ OTP email sent:', info.messageId)
+    logger.success('OTP email sent', { messageId: info.messageId });
     return { success: true, messageId: info.messageId }
   } catch (error) {
-    console.error('❌ Email send error:', error)
+    logger.error('Email send error:', error);
     throw new Error('Failed to send OTP email')
   }
 }
@@ -156,10 +156,10 @@ async function sendPasswordResetEmail(email, resetToken) {
     }
 
     const info = await transporter.sendMail(mailOptions)
-    console.log('✅ Password reset email sent:', info.messageId)
+    logger.success('Password reset email sent', { messageId: info.messageId });
     return { success: true, messageId: info.messageId }
   } catch (error) {
-    console.error('❌ Email send error:', error)
+    logger.error('Email send error:', error);
     throw new Error('Failed to send password reset email: ' + error.message)
   }
 }
@@ -169,10 +169,10 @@ async function testEmailConfig() {
   try {
     const transporter = createTransporter()
     await transporter.verify()
-    console.log('✅ Email configuration is valid')
+    logger.success('Email configuration is valid');
     return true
   } catch (error) {
-    console.error('❌ Email configuration error:', error.message)
+    logger.error('Email configuration error:', error);
     return false
   }
 }

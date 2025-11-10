@@ -4,21 +4,20 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../config/database');
 const { sendPasswordResetEmail } = require('../utils/emailService');
+const { validateLogin, validatePasswordReset, validateEmailRecovery } = require('../middleware/validation');
+const logger = require('../utils/logger');
 const router = express.Router();
 
 // Login
-router.post('/login', async (req, res) => {
+router.post('/login', validateLogin, async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
 
     // Find admin by email
     const [rows] = await db.query('SELECT * FROM admins WHERE email = ?', [email.toLowerCase().trim()]);
     
     if (rows.length === 0) {
+      logger.warn(`Failed login attempt for email: ${email}`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -28,6 +27,7 @@ router.post('/login', async (req, res) => {
     const isValid = await bcrypt.compare(password, admin.password_hash);
     
     if (!isValid) {
+      logger.warn(`Invalid password for email: ${email}`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -47,6 +47,8 @@ router.post('/login', async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
+    logger.info(`Successful login for: ${email}`);
+
     res.json({
       success: true,
       message: 'Login successful',
@@ -56,7 +58,7 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -90,19 +92,16 @@ router.get('/check', async (req, res) => {
 });
 
 // Password recovery - reset to default if email unchanged, else send email
-router.post('/recover-password', async (req, res) => {
+router.post('/recover-password', validateEmailRecovery, async (req, res) => {
   try {
     const { email } = req.body
-
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' })
-    }
 
     // Find admin by email
     const [admins] = await db.query('SELECT * FROM admins WHERE email = ?', [email.toLowerCase().trim()])
     
     if (admins.length === 0) {
       // Don't reveal if email exists (security)
+      logger.warn(`Password recovery attempt for non-existent email: ${email}`);
       return res.json({ 
         success: true, 
         message: 'If this email exists, recovery instructions have been sent.' 
@@ -122,7 +121,7 @@ router.post('/recover-password', async (req, res) => {
         [defaultPasswordHash, admin.id]
       )
 
-      console.log(`✅ Password reset to default for: ${admin.email}`)
+      logger.info(`Password reset to default for: ${admin.email}`);
 
       return res.json({
         success: true,
@@ -131,7 +130,7 @@ router.post('/recover-password', async (req, res) => {
       })
     } else {
       // Email has been changed - send reset email
-      console.log(`📧 Sending password reset email to: ${admin.email}`)
+      logger.info(`Sending password reset email to: ${admin.email}`);
       
       try {
         // Generate unique reset token
@@ -149,7 +148,7 @@ router.post('/recover-password', async (req, res) => {
         // Send email with reset link
         await sendPasswordResetEmail(admin.email, resetToken)
         
-        console.log(`✅ Password reset email sent successfully to: ${admin.email}`)
+        logger.success(`Password reset email sent successfully to: ${admin.email}`);
         
         return res.json({
           success: true,
@@ -157,7 +156,7 @@ router.post('/recover-password', async (req, res) => {
           isDefaultEmail: false
         })
       } catch (emailError) {
-        console.error('❌ Failed to send reset email:', emailError.message)
+        logger.error('Failed to send reset email:', emailError);
         
         return res.status(500).json({
           error: 'Failed to send reset email. Please check email configuration or contact administrator.',
@@ -167,7 +166,7 @@ router.post('/recover-password', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Password recovery error:', error)
+    logger.error('Password recovery error:', error);
     res.status(500).json({ error: 'Server error' })
   }
 })
@@ -186,6 +185,7 @@ router.get('/verify-reset-token/:token', async (req, res) => {
     )
 
     if (resets.length === 0) {
+      logger.warn(`Invalid or expired reset token attempted`);
       return res.status(400).json({ 
         valid: false, 
         error: 'Invalid or expired reset token' 
@@ -197,23 +197,15 @@ router.get('/verify-reset-token/:token', async (req, res) => {
       email: resets[0].email 
     })
   } catch (error) {
-    console.error('Token verification error:', error)
+    logger.error('Token verification error:', error);
     res.status(500).json({ error: 'Server error' })
   }
 })
 
 // Reset password with token
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', validatePasswordReset, async (req, res) => {
   try {
     const { token, newPassword } = req.body
-
-    if (!token || !newPassword) {
-      return res.status(400).json({ error: 'Token and new password are required' })
-    }
-
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters long' })
-    }
 
     // Find valid reset token
     const [resets] = await db.query(
@@ -225,6 +217,7 @@ router.post('/reset-password', async (req, res) => {
     )
 
     if (resets.length === 0) {
+      logger.warn(`Attempt to use invalid or expired reset token`);
       return res.status(400).json({ 
         error: 'Invalid or expired reset token. Please request a new password reset.' 
       })
@@ -247,14 +240,14 @@ router.post('/reset-password', async (req, res) => {
       [reset.id]
     )
 
-    console.log(`✅ Password reset successfully for admin ID: ${reset.admin_id}`)
+    logger.success(`Password reset successfully for admin ID: ${reset.admin_id}`);
 
     res.json({ 
       success: true, 
       message: 'Password has been reset successfully. You can now login with your new password.' 
     })
   } catch (error) {
-    console.error('Password reset error:', error)
+    logger.error('Password reset error:', error);
     res.status(500).json({ error: 'Server error' })
   }
 })
