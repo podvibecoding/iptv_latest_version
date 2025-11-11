@@ -11,6 +11,7 @@ import WorldChannels from './components/WorldChannels'
 import SupportedDevices from './components/SupportedDevices'
 import Footer from './components/Footer'
 import StructuredData from './components/StructuredData'
+import PageLoader from './components/PageLoader'
 import { getApiUrl } from './lib/config'
 
 // Disable all caching for this page
@@ -56,7 +57,7 @@ export default async function Page() {
   const settings = await getSettings()
 
   return (
-    <>
+    <PageLoader>
       <StructuredData />
       <Header />
       <main id="main-content">
@@ -75,6 +76,6 @@ export default async function Page() {
         <SupportedDevices settings={settings} />
       </main>
       <Footer />
-    </>
+    </PageLoader>
   )
 }

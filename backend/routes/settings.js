@@ -23,7 +23,11 @@ router.get('/', async (req, res) => {
         google_analytics_id: null,
         google_analytics_measurement_id: null,
         site_title: 'IPTV ACCESS - Best IPTV Service Provider',
-        site_description: 'Get the best IPTV subscription with IPTV ACCESS. Stream 40,000+ live TV channels, 54,000+ movies & series in HD/4K.'
+        site_description: 'Get the best IPTV subscription with IPTV ACCESS. Stream 40,000+ live TV channels, 54,000+ movies & series in HD/4K.',
+        copyright_text: '© 2025 IPTV Services. All rights reserved.',
+        slider_image_1: null,
+        slider_image_2: null,
+        slider_image_3: null
       });
     }
 
@@ -51,7 +55,11 @@ router.put('/', authMiddleware, async (req, res) => {
       google_analytics_id,
       google_analytics_measurement_id,
       site_title,
-      site_description
+      site_description,
+      copyright_text,
+      slider_image_1,
+      slider_image_2,
+      slider_image_3
     } = req.body;
 
     const updateFields = [];
@@ -112,6 +120,22 @@ router.put('/', authMiddleware, async (req, res) => {
     if (site_description !== undefined) {
       updateFields.push('site_description = ?');
       values.push(site_description);
+    }
+    if (copyright_text !== undefined) {
+      updateFields.push('copyright_text = ?');
+      values.push(copyright_text);
+    }
+    if (slider_image_1 !== undefined) {
+      updateFields.push('slider_image_1 = ?');
+      values.push(slider_image_1);
+    }
+    if (slider_image_2 !== undefined) {
+      updateFields.push('slider_image_2 = ?');
+      values.push(slider_image_2);
+    }
+    if (slider_image_3 !== undefined) {
+      updateFields.push('slider_image_3 = ?');
+      values.push(slider_image_3);
     }
 
     if (updateFields.length === 0) {

@@ -80,6 +80,7 @@ const faqsRoutes = require('./routes/faqs');
 const accountRoutes = require('./routes/account');
 const analyticsRoutes = require('./routes/analytics');
 const blogsRoutes = require('./routes/blogs');
+const sliderImagesRoutes = require('./routes/sliderImages');
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -89,6 +90,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/faqs', faqsRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/slider-images', sliderImagesRoutes);
 app.use('/api', blogsRoutes);
 
 // Health check endpoint

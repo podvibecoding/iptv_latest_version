@@ -24,21 +24,38 @@ export default function FaviconUpdater() {
         const settings = await response.json()
         
         if (settings.favicon_url) {
+          // Add cache buster to force browser refresh
+          const cacheBuster = `?v=${Date.now()}`
+          const faviconUrl = settings.favicon_url + cacheBuster
+          
           // Update all favicon link elements
           const faviconLinks = document.querySelectorAll("link[rel*='icon']")
-          faviconLinks.forEach(link => link.remove())
+          faviconLinks.forEach(link => {
+            link.href = faviconUrl
+          })
           
-          // Add new favicon
-          const link = document.createElement('link')
-          link.rel = 'icon'
-          link.href = settings.favicon_url
-          document.head.appendChild(link)
-          
-          // Add apple touch icon
-          const appleLink = document.createElement('link')
-          appleLink.rel = 'apple-touch-icon'
-          appleLink.href = settings.favicon_url
-          document.head.appendChild(appleLink)
+          // If no favicon links exist, create them
+          if (faviconLinks.length === 0) {
+            // Add new favicon
+            const link = document.createElement('link')
+            link.rel = 'icon'
+            link.type = 'image/x-icon'
+            link.href = faviconUrl
+            document.head.appendChild(link)
+            
+            // Add shortcut icon
+            const shortcutLink = document.createElement('link')
+            shortcutLink.rel = 'shortcut icon'
+            shortcutLink.type = 'image/x-icon'
+            shortcutLink.href = faviconUrl
+            document.head.appendChild(shortcutLink)
+            
+            // Add apple touch icon
+            const appleLink = document.createElement('link')
+            appleLink.rel = 'apple-touch-icon'
+            appleLink.href = faviconUrl
+            document.head.appendChild(appleLink)
+          }
         }
       } catch (error) {
         console.error('Failed to load favicon:', error)

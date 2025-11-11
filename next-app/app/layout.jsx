@@ -41,6 +41,11 @@ export async function generateMetadata() {
       template: `%s | ${title.split(' - ')[0] || 'IPTV ACCESS'}`
     },
     description: description,
+    icons: settings.favicon_url ? {
+      icon: settings.favicon_url,
+      shortcut: settings.favicon_url,
+      apple: settings.favicon_url,
+    } : undefined,
     keywords: [
     'IPTV',
     'IPTV service',

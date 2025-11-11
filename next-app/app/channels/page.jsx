@@ -1,40 +1,60 @@
 'use client'
-import { useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
+import { getApiUrl } from '../lib/config'
 
 export default function ChannelsPage() {
-  // Array of image names from Channels-Icons folder
-  const images = [
-    '1.webp',
-    '3.webp',
-    '4.webp',
-    '6.webp',
-    '11.webp',
-    '17.webp',
-    '18.webp',
-    '20.webp',
-    '26.webp',
-    '29.webp',
-    '30.webp',
-    '32.webp',
-    '33.webp',
-    '35.webp',
-    '40.webp',
-    '42.webp',
-    '43.webp',
-    '44.webp',
-    '110.webp',
-    'c22.webp',
-    'c30.webp',
-    'c31.webp',
-    'c34.webp',
-    'c36.webp',
-    'c37.webp',
-  ]
+  const [channelImages, setChannelImages] = useState([])
+  const [cacheBuster, setCacheBuster] = useState(Date.now())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchChannelImages = async () => {
+      try {
+        const apiUrl = getApiUrl()
+        // Add timestamp to prevent caching
+        const timestamp = new Date().getTime()
+        const res = await fetch(`${apiUrl}/slider-images?section=channels&_t=${timestamp}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          console.log('📊 Channels API Response:', data.length, 'images')
+          if (data && data.length > 0) {
+            const newBuster = Date.now()
+            const imagesWithBuster = data.map(img => `${img.image_url}?v=${newBuster}`)
+            console.log('✅ Setting channel images:', imagesWithBuster)
+            setChannelImages(imagesWithBuster)
+            setCacheBuster(newBuster)
+          } else {
+            console.log('⚠️ No images from API')
+            setChannelImages([])
+          }
+        } else {
+          console.log('❌ API request failed')
+          setChannelImages([])
+        }
+      } catch (error) {
+        console.error('Error loading channel images:', error)
+        setChannelImages([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchChannelImages()
+  }, [])
+
+  const images = channelImages
 
   // Duplicate images for seamless infinite scroll
-  const duplicatedImages = useMemo(() => [...images, ...images], [])
+  const duplicatedImages = useMemo(() => [...images, ...images], [images])
   const duration = Math.max(12, Math.round(10 + images.length * 1.5))
 
   return (
@@ -123,24 +143,34 @@ export default function ChannelsPage() {
               Channel Categories
             </h2>
 
-            {/* Infinite Scroll Container */}
-            <div className="movie-strip">
-              <div className="movie-row" style={{ '--movie-scroll-duration': `${duration}s` }}>
-                {duplicatedImages.map((image, index) => (
-                  <div className="movie-card" key={index} style={{ width: 120 }}>
-                    <img
-                      src={`/Channels-Icons/${image}`}
-                      alt={`Channel ${index + 1}`}
-                      style={{
-                        width: '100%',
-                        height: 'auto',
-                        objectFit: 'contain'
-                      }}
-                    />
-                  </div>
-                ))}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+                Loading channel categories...
               </div>
-            </div>
+            ) : images.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+                No channel categories available
+              </div>
+            ) : (
+              /* Infinite Scroll Container */
+              <div className="movie-strip">
+                <div className="movie-row" style={{ '--movie-scroll-duration': `${duration}s` }}>
+                  {duplicatedImages.map((image, index) => (
+                    <div className="movie-card" key={index} style={{ width: 120 }}>
+                      <img
+                        src={image}
+                        alt={`Channel ${index + 1}`}
+                        style={{
+                          width: '100%',
+                          height: 'auto',
+                          objectFit: 'contain'
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

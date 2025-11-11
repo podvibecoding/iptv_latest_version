@@ -42,6 +42,13 @@ export default function AdminDashboard() {
   const [supportedDevicesParagraph, setSupportedDevicesParagraph] = useState('')
   const [siteTitle, setSiteTitle] = useState('')
   const [siteDescription, setSiteDescription] = useState('')
+  const [copyrightText, setCopyrightText] = useState('')
+  const [heroSliders, setHeroSliders] = useState([])
+  const [streamingSliders, setStreamingSliders] = useState([])
+  const [moviesSliders, setMoviesSliders] = useState([])
+  const [sportsSliders, setSportsSliders] = useState([])
+  const [channelsSliders, setChannelsSliders] = useState([])
+  const [uploadingSlider, setUploadingSlider] = useState(null)
   
   // Account settings state
   const [currentEmail, setCurrentEmail] = useState('')
@@ -82,6 +89,7 @@ export default function AdminDashboard() {
       loadFaqs()
       loadAccountInfo()
       loadAnalytics()
+      loadSliderImages()
       
       const interval = setInterval(loadAnalytics, 30000)
       return () => clearInterval(interval)
@@ -176,8 +184,48 @@ export default function AdminDashboard() {
       setGoogleMeasurementId(data.google_analytics_measurement_id || '')
       setSiteTitle(data.site_title || '')
       setSiteDescription(data.site_description || '')
+      setCopyrightText(data.copyright_text || '© 2025 IPTV Services. All rights reserved.')
     } catch (error) {
       console.error('Failed to load settings:', error)
+    }
+  }
+
+  const loadSliderImages = async () => {
+    try {
+      const apiUrl = getApiUrl()
+      
+      // Load sliders for all sections
+      const [heroRes, streamingRes, moviesRes, sportsRes, channelsRes] = await Promise.all([
+        fetch(`${apiUrl}/slider-images?section=hero`, { cache: 'no-store' }),
+        fetch(`${apiUrl}/slider-images?section=streaming`, { cache: 'no-store' }),
+        fetch(`${apiUrl}/slider-images?section=movies`, { cache: 'no-store' }),
+        fetch(`${apiUrl}/slider-images?section=sports`, { cache: 'no-store' }),
+        fetch(`${apiUrl}/slider-images?section=channels`, { cache: 'no-store' })
+      ])
+      
+      const [heroData, streamingData, moviesData, sportsData, channelsData] = await Promise.all([
+        heroRes.json(),
+        streamingRes.json(),
+        moviesRes.json(),
+        sportsRes.json(),
+        channelsRes.json()
+      ])
+      
+      console.log('Slider images loaded:', {
+        hero: heroData?.length || 0,
+        streaming: streamingData?.length || 0,
+        movies: moviesData?.length || 0,
+        sports: sportsData?.length || 0,
+        channels: channelsData?.length || 0
+      })
+      
+      setHeroSliders(heroData || [])
+      setStreamingSliders(streamingData || [])
+      setMoviesSliders(moviesData || [])
+      setSportsSliders(sportsData || [])
+      setChannelsSliders(channelsData || [])
+    } catch (error) {
+      console.error('Failed to load slider images:', error)
     }
   }
 
@@ -349,6 +397,72 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleSliderUpload = async (e, section) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploadingSlider(section)
+    const apiUrl = getApiUrl()
+    const apiBase = getApiBase()
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        const formData = new FormData()
+        formData.append('slider', file)
+
+        // Upload file
+        const uploadRes = await fetch(`${apiUrl}/upload/slider`, {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        })
+
+        const uploadData = await uploadRes.json()
+        if (!uploadRes.ok) throw new Error(uploadData.error)
+
+        const fullUrl = `${apiBase}${uploadData.url}`
+
+        // Add to slider_images table with section
+        const addRes = await fetch(`${apiUrl}/slider-images`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ image_url: fullUrl, section })
+        })
+
+        const addData = await addRes.json()
+        if (!addRes.ok) throw new Error(addData.error)
+      }
+
+      showMessage('success', `${files.length} slider image(s) uploaded successfully!`)
+      await loadSliderImages()
+    } catch (error) {
+      showMessage('error', error.message)
+    } finally {
+      setUploadingSlider(null)
+      e.target.value = '' // Reset file input
+    }
+  }
+
+  const deleteSliderImage = async (id) => {
+    try {
+      const apiUrl = getApiUrl()
+      const res = await fetch(`${apiUrl}/slider-images/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      showMessage('success', 'Slider image deleted successfully')
+      await loadSliderImages()
+    } catch (error) {
+      showMessage('error', error.message)
+    }
+  }
+
   const saveSettings = async () => {
     setSaving(true)
     try {
@@ -371,7 +485,8 @@ export default function AdminDashboard() {
           google_analytics_id: googleAnalyticsId,
           google_analytics_measurement_id: googleMeasurementId,
           site_title: siteTitle,
-          site_description: siteDescription
+          site_description: siteDescription,
+          copyright_text: copyrightText
         })
       })
 
@@ -586,22 +701,33 @@ export default function AdminDashboard() {
     }
   }
 
-  const deleteFaq = async (id) => {
-    try {
-      const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/faqs/${id}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to delete FAQ')
+  const deleteFaq = (id) => {
+    const faq = faqs.find(f => f.id === id)
+    setConfirmDialog({
+      isOpen: true,
+      type: 'faq',
+      id: id,
+      name: faq?.question || 'this FAQ',
+      action: async () => {
+        try {
+          const apiUrl = getApiUrl()
+          const res = await fetch(`${apiUrl}/faqs/${id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+          })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error || 'Failed to delete FAQ')
+          }
+          setFaqs(prev => prev.filter(f => f.id !== id))
+          showMessage('success', 'FAQ deleted')
+          setConfirmDialog({ isOpen: false, type: '', id: null, name: '', action: null })
+        } catch (e) {
+          showMessage('error', e.message)
+          setConfirmDialog({ isOpen: false, type: '', id: null, name: '', action: null })
+        }
       }
-      setFaqs(prev => prev.filter(f => f.id !== id))
-      showMessage('success', 'FAQ deleted')
-    } catch (e) {
-      showMessage('error', e.message)
-    }
+    })
   }
 
   const handleLogout = async () => {
@@ -866,6 +992,16 @@ export default function AdminDashboard() {
             setSiteTitle={setSiteTitle}
             siteDescription={siteDescription}
             setSiteDescription={setSiteDescription}
+            copyrightText={copyrightText}
+            setCopyrightText={setCopyrightText}
+            heroSliders={heroSliders}
+            streamingSliders={streamingSliders}
+            moviesSliders={moviesSliders}
+            sportsSliders={sportsSliders}
+            channelsSliders={channelsSliders}
+            handleSliderUpload={handleSliderUpload}
+            deleteSliderImage={deleteSliderImage}
+            uploadingSlider={uploadingSlider}
             saveSettings={saveSettings}
             saving={saving}
           />
@@ -900,6 +1036,8 @@ export default function AdminDashboard() {
             addFaq={addFaq}
             updateFaq={updateFaq}
             deleteFaq={deleteFaq}
+            confirmDialog={confirmDialog}
+            setConfirmDialog={setConfirmDialog}
           />
         )}
       </div>
@@ -1260,8 +1398,136 @@ function AccountSection({ currentEmail, newEmail, setNewEmail, emailPassword, se
   )
 }
 
+// Reusable Slider Gallery Component
+function SliderGallery({ title, description, section, sliders, handleUpload, deleteImage, isUploading }) {
+  return (
+    <div style={{ marginBottom: '32px', paddingTop: '24px', borderTop: '1px solid #2a2a2a' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <label style={{ color: '#ddd', fontSize: '15px', fontWeight: '600' }}>
+          {title} ({sliders.length})
+        </label>
+        <label
+          htmlFor={`slider-upload-${section}`}
+          style={{
+            padding: '10px 20px',
+            borderRadius: '8px',
+            border: 'none',
+            background: isUploading ? '#555' : '#86ff00',
+            color: '#000',
+            fontSize: '14px',
+            fontWeight: '700',
+            cursor: isUploading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <FaPlus /> {isUploading ? 'Uploading...' : 'Add Images'}
+        </label>
+        <input
+          id={`slider-upload-${section}`}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => handleUpload(e, section)}
+          disabled={isUploading}
+          style={{ display: 'none' }}
+        />
+      </div>
+      <p style={{ color: '#888', fontSize: '13px', margin: '0 0 20px 0' }}>
+        {description}
+      </p>
+
+      {/* Slider Images Gallery */}
+      {sliders.length > 0 ? (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+          gap: '16px',
+          marginBottom: '16px'
+        }}>
+          {sliders.map((img, index) => (
+            <div 
+              key={img.id}
+              style={{ 
+                position: 'relative',
+                background: '#0f0f0f', 
+                borderRadius: '8px', 
+                border: '1px solid #3a3a3a',
+                overflow: 'hidden'
+              }}
+            >
+              <img 
+                src={img.image_url} 
+                alt={`${title} ${index + 1}`} 
+                style={{ 
+                  width: '100%', 
+                  height: '150px', 
+                  objectFit: 'cover',
+                  display: 'block'
+                }} 
+              />
+              <div style={{ 
+                position: 'absolute',
+                top: '8px',
+                left: '8px',
+                background: 'rgba(0, 0, 0, 0.7)',
+                color: '#86ff00',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: '700'
+              }}>
+                #{index + 1}
+              </div>
+              <div style={{ padding: '12px' }}>
+                <button
+                  onClick={() => deleteImage(img.id)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '6px',
+                    border: '1px solid #8b1e1e',
+                    background: 'transparent',
+                    color: '#ff6666',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <FaTrash /> Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ 
+          padding: '40px', 
+          textAlign: 'center', 
+          background: '#0f0f0f', 
+          borderRadius: '8px',
+          border: '2px dashed #3a3a3a',
+          marginBottom: '16px'
+        }}>
+          <FaInfoCircle style={{ fontSize: '48px', color: '#555', marginBottom: '16px' }} />
+          <p style={{ color: '#888', margin: 0 }}>No slider images uploaded yet. Click "Add Images" to upload.</p>
+        </div>
+      )}
+
+      <p style={{ color: '#888', fontSize: '12px', margin: '0' }}>
+        Supported formats: JPEG, JPG, PNG, GIF, WebP, SVG, BMP (Max 10MB per image). Images will appear in the order shown above.
+      </p>
+    </div>
+  )
+}
+
 // Site Settings Section Component  
-function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, setWhatsappNumber, useLogoImage, setUseLogoImage, logoUrl, handleLogoUpload, logoWidth, setLogoWidth, logoText, setLogoText, faviconUrl, handleFaviconUpload, heroHeading, setHeroHeading, heroParagraph, setHeroParagraph, supportedDevicesParagraph, setSupportedDevicesParagraph, siteTitle, setSiteTitle, siteDescription, setSiteDescription, saveSettings, saving }) {
+function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, setWhatsappNumber, useLogoImage, setUseLogoImage, logoUrl, handleLogoUpload, logoWidth, setLogoWidth, logoText, setLogoText, faviconUrl, handleFaviconUpload, heroHeading, setHeroHeading, heroParagraph, setHeroParagraph, supportedDevicesParagraph, setSupportedDevicesParagraph, siteTitle, setSiteTitle, siteDescription, setSiteDescription, copyrightText, setCopyrightText, heroSliders, streamingSliders, moviesSliders, sportsSliders, channelsSliders, handleSliderUpload, deleteSliderImage, uploadingSlider, saveSettings, saving }) {
   return (
     <div>
       <h1 style={{ margin: '0 0 32px 0', color: '#fff', fontSize: '32px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1603,6 +1869,85 @@ function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, se
             </p>
           </div>
         </div>
+
+        <div style={{ marginBottom: '32px', paddingTop: '24px', borderTop: '1px solid #2a2a2a' }}>
+          <label style={{ display: 'block', color: '#ddd', marginBottom: '12px', fontSize: '15px', fontWeight: '600' }}>
+            Copyright Text
+          </label>
+          <p style={{ color: '#888', fontSize: '13px', margin: '0 0 16px 0' }}>
+            Customize the copyright text displayed in your website footer.
+          </p>
+          <input
+            type="text"
+            value={copyrightText}
+            onChange={(e) => setCopyrightText(e.target.value)}
+            placeholder="© 2025 IPTV Services. All rights reserved."
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderRadius: '8px',
+              border: '1px solid #3a3a3a',
+              background: '#0f0f0f',
+              color: '#fff',
+              fontSize: '15px'
+            }}
+          />
+        </div>
+
+        {/* Hero Slider */}
+        <SliderGallery
+          title="Hero Section Slider"
+          description="Upload images for the main hero section at the top of the homepage. These images will rotate automatically."
+          section="hero"
+          sliders={heroSliders}
+          handleUpload={handleSliderUpload}
+          deleteImage={deleteSliderImage}
+          isUploading={uploadingSlider === 'hero'}
+        />
+
+        {/* Streaming Services Slider */}
+        <SliderGallery
+          title="Streaming Services Slider"
+          description="Upload images showcasing streaming service logos and features. Displayed in the streaming services section."
+          section="streaming"
+          sliders={streamingSliders}
+          handleUpload={handleSliderUpload}
+          deleteImage={deleteSliderImage}
+          isUploading={uploadingSlider === 'streaming'}
+        />
+
+        {/* Movies & TV Shows Slider */}
+        <SliderGallery
+          title="Movies & TV Shows Slider"
+          description="Upload images of popular movies and TV shows available on your service. Displayed in the movies section."
+          section="movies"
+          sliders={moviesSliders}
+          handleUpload={handleSliderUpload}
+          deleteImage={deleteSliderImage}
+          isUploading={uploadingSlider === 'movies'}
+        />
+
+        {/* Sports Events Slider */}
+        <SliderGallery
+          title="Sports Events Slider"
+          description="Upload images of major sports events and leagues available. Displayed in the sports section."
+          section="sports"
+          sliders={sportsSliders}
+          handleUpload={handleSliderUpload}
+          deleteImage={deleteSliderImage}
+          isUploading={uploadingSlider === 'sports'}
+        />
+
+        {/* Channel Categories Slider */}
+        <SliderGallery
+          title="Channel Categories Slider"
+          description="Upload images of channel categories. Displayed in the Channel Categories section on the Channels page."
+          section="channels"
+          sliders={channelsSliders}
+          handleUpload={handleSliderUpload}
+          deleteImage={deleteSliderImage}
+          isUploading={uploadingSlider === 'channels'}
+        />
 
         <button
           onClick={saveSettings}
@@ -2418,7 +2763,7 @@ function PlanCard({ plan, onUpdate, onDelete }) {
 }
 
 // FAQs Section Component
-function FaqsSection({ faqs, newFaqQ, setNewFaqQ, newFaqA, setNewFaqA, addFaq, updateFaq, deleteFaq }) {
+function FaqsSection({ faqs, newFaqQ, setNewFaqQ, newFaqA, setNewFaqA, addFaq, updateFaq, deleteFaq, confirmDialog, setConfirmDialog }) {
   return (
     <div>
       <h1 style={{ margin: '0 0 32px 0', color: '#fff', fontSize: '32px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -2495,6 +2840,17 @@ function FaqsSection({ faqs, newFaqQ, setNewFaqQ, newFaqA, setNewFaqA, addFaq, u
           ))}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, type: '', id: null, name: '', action: null })}
+        onConfirm={confirmDialog.action}
+        title="Delete FAQ"
+        message={`Are you sure you want to delete "${confirmDialog.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   )
 }
@@ -2612,21 +2968,6 @@ function FaqItem({ faq, onSave, onDelete }) {
           </div>
         </div>
       )}
-
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        onClose={() => setConfirmDialog({ isOpen: false, type: '', id: null, name: '', action: null })}
-        onConfirm={confirmDialog.action}
-        title={confirmDialog.type === 'tab' ? 'Delete Device Tab' : 'Delete Plan'}
-        message={
-          confirmDialog.type === 'tab'
-            ? `Are you sure you want to delete the "${confirmDialog.name}" device tab? This will delete ALL plans under this tab.`
-            : `Are you sure you want to delete the plan "${confirmDialog.name}"? This action cannot be undone.`
-        }
-        confirmText="Delete"
-        cancelText="Cancel"
-        type="danger"
-      />
     </div>
   )
 }

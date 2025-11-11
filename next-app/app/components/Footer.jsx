@@ -13,6 +13,7 @@ export default function Footer() {
   const [logoWidth, setLogoWidth] = useState(150)
   const [email, setEmail] = useState('contact@yourdomain.com')
   const [whatsApp, setWhatsApp] = useState('')
+  const [copyrightText, setCopyrightText] = useState('© 2025 IPTV Services. All rights reserved.')
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -52,6 +53,7 @@ export default function Footer() {
         if (data.logo_width) setLogoWidth(data.logo_width)
         if (data.contact_email) setEmail(data.contact_email)
         if (data.whatsapp_number) setWhatsApp(data.whatsapp_number)
+        if (data.copyright_text) setCopyrightText(data.copyright_text)
       } catch (e) {
         console.error('Failed to load settings for footer:', e)
       }
@@ -133,7 +135,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="container footer-bottom">
-        <p>© {new Date().getFullYear()} POD IPTV. All rights reserved.</p>
+        <p>{copyrightText}</p>
       </div>
     </footer>
   )

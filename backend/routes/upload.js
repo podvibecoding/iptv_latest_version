@@ -215,6 +215,71 @@ router.post('/favicon', authMiddleware, uploadFavicon.single('favicon'), (req, r
   }
 });
 
+// Configure multer for slider images
+const sliderStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'slider-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadSlider = multer({
+  storage: sliderStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit for slider images
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp|svg|bmp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = /image\/(jpeg|jpg|png|gif|webp|svg\+xml|bmp)/.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp, svg, bmp)'));
+    }
+  }
+});
+
+// Upload slider image (protected endpoint)
+router.post('/slider', authMiddleware, uploadSlider.single('slider'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'No file uploaded' 
+      });
+    }
+
+    // Return just the path, not the full URL
+    const imageUrl = `/uploads/${req.file.filename}`;
+
+    console.log('Slider image uploaded:', {
+      filename: req.file.filename,
+      size: req.file.size,
+      url: imageUrl
+    });
+
+    res.json({
+      success: true,
+      message: 'Slider image uploaded successfully',
+      url: imageUrl,
+      filename: req.file.filename,
+      size: req.file.size
+    });
+  } catch (error) {
+    console.error('Slider upload error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Upload failed',
+      message: error.message 
+    });
+  }
+});
+
 // Error handler for multer
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
