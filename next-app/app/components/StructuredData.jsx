@@ -12,14 +12,26 @@ export default function StructuredData() {
         const apiUrl = getApiUrl()
         
         // Fetch plans
-        const plansRes = await fetch(`${apiUrl}/plans`)
+        const plansRes = await fetch(`${apiUrl}/plans?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
         if (plansRes.ok) {
           const plansData = await plansRes.json()
           setPlans(plansData.slice(0, 8))
         }
 
         // Fetch FAQs
-        const faqsRes = await fetch(`${apiUrl}/faqs`)
+        const faqsRes = await fetch(`${apiUrl}/faqs?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
         if (faqsRes.ok) {
           const faqsData = await faqsRes.json()
           setFaqs(faqsData)

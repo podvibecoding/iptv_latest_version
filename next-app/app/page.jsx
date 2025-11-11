@@ -13,6 +13,10 @@ import Footer from './components/Footer'
 import StructuredData from './components/StructuredData'
 import { getApiUrl } from './lib/config'
 
+// Disable all caching for this page
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // Dynamic metadata that uses admin panel settings
 export async function generateMetadata() {
   const settings = await getSettings()

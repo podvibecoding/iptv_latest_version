@@ -1,0 +1,202 @@
+/* Admin Panel Alert Animations */
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Alert Icon Pulse Animation */
+@keyframes iconPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* Shimmer effect for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+/* Success animation */
+@keyframes successScale {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Error shake animation */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Bounce animation for success icons */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Global alert container styles */
+.admin-alert-container {
+  animation: slideIn 0.3s ease-out;
+}
+
+.admin-alert-container.closing {
+  animation: slideOut 0.3s ease-in;
+}
+
+/* Spinner for loading states */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Utility classes for alerts */
+.alert-success {
+  animation: successScale 0.4s ease-out;
+}
+
+.alert-error {
+  animation: shake 0.5s ease-out;
+}
+
+.alert-icon {
+  animation: iconPulse 1.5s ease-in-out infinite;
+}
+
+/* Smooth transitions */
+.alert-transition {
+  transition: all 0.3s ease;
+}
+
+/* Loading shimmer effect */
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Button hover effects */
+.admin-button {
+  transition: all 0.2s ease;
+}
+
+.admin-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.admin-button:active {
+  transform: translateY(0);
+}
+
+/* Input focus effects */
+.admin-input:focus {
+  outline: none;
+  border-color: #86ff00;
+  box-shadow: 0 0 0 3px rgba(134, 255, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+/* Card hover effects */
+.admin-card {
+  transition: all 0.3s ease;
+}
+
+.admin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* Success states */
+.state-success {
+  animation: fadeIn 0.3s ease, bounce 0.6s ease;
+}
+
+/* Error states */
+.state-error {
+  animation: fadeIn 0.3s ease, shake 0.5s ease;
+}
+
+/* Info states */
+.state-info {
+  animation: slideIn 0.3s ease;
+}
+
+/* Warning states */
+.state-warning {
+  animation: pulse 2s ease-in-out infinite;
+}

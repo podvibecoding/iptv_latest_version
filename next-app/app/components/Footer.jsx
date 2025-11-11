@@ -1,8 +1,12 @@
 'use client'
 import React, { useEffect, useState } from 'react'
-import { getApiUrl } from '../lib/config'
+import { useRouter, usePathname } from 'next/navigation'
+import Link from 'next/link'
+import { getApiUrl, getApiBase } from '../lib/config'
 
 export default function Footer() {
+  const router = useRouter()
+  const pathname = usePathname()
   const [logoUrl, setLogoUrl] = useState('')
   const [logoText, setLogoText] = useState('')
   const [useLogoImage, setUseLogoImage] = useState(true)
@@ -14,10 +18,35 @@ export default function Footer() {
     const loadSettings = async () => {
       try {
         const apiUrl = getApiUrl()
-        const res = await fetch(`${apiUrl}/settings`)
+        const apiBase = getApiBase()
+        const res = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
         if (!res.ok) return
         const data = await res.json()
-        if (data.logo_url) setLogoUrl(data.logo_url)
+        
+        // Handle logo URL properly
+        if (data.logo_url) {
+          let fullLogoUrl = data.logo_url
+          
+          // If it already starts with http/https, use as is
+          if (fullLogoUrl.startsWith('http://') || fullLogoUrl.startsWith('https://')) {
+            setLogoUrl(fullLogoUrl)
+          }
+          // If it starts with /uploads, prepend the API base URL (not /api)
+          else if (fullLogoUrl.startsWith('/uploads')) {
+            setLogoUrl(`${apiBase}${fullLogoUrl}`)
+          }
+          // Otherwise use as is
+          else {
+            setLogoUrl(fullLogoUrl)
+          }
+        }
+        
         if (data.logo_text) setLogoText(data.logo_text)
         if (data.use_logo_image !== undefined) setUseLogoImage(data.use_logo_image)
         if (data.logo_width) setLogoWidth(data.logo_width)
@@ -34,6 +63,21 @@ export default function Footer() {
     ? `https://wa.me/${whatsApp.replace(/[^\d]/g, '')}`
     : 'https://wa.me/'
 
+  // Handle navigation with hash
+  const handleHashNavigation = (e, hash) => {
+    e.preventDefault()
+    if (pathname === '/') {
+      // Already on home page, just scroll
+      const element = document.querySelector(hash)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' })
+      }
+    } else {
+      // Navigate to home page with hash
+      router.push(`/${hash}`)
+    }
+  }
+
   return (
     <footer className="site-footer">
       <div className="container footer-grid footer-grid-4">
@@ -42,28 +86,28 @@ export default function Footer() {
           {/* 1) Left: Logo (optional) */}
           <div className="footer-col footer-logo-col">
             {useLogoImage && logoUrl ? (
-              <a href="#home" className="footer-logo" aria-label="Homepage">
+              <Link href="/" className="footer-logo" aria-label="Homepage">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={logoUrl}
                   alt="Site logo"
                   style={{ width: logoWidth, height: 'auto', maxWidth: 220, objectFit: 'contain' }}
                 />
-              </a>
+              </Link>
             ) : !useLogoImage && logoText ? (
-              <a href="#home" className="footer-logo" aria-label="Homepage">
+              <Link href="/" className="footer-logo" aria-label="Homepage">
                 <span className="footer-logo-fallback">{logoText}</span>
-              </a>
+              </Link>
             ) : null}
           </div>
 
           {/* 2) Center: nav links in one line */}
           <nav className="footer-col footer-links" aria-label="Footer navigation">
             <ul className="footer-nav-list">
-              <li><a href="#pricing">Pricing</a></li>
-              <li><a href="/channels">Channel List</a></li>
-              <li><a href="#faq">FAQ</a></li>
-              <li><a href="/blog">Blog</a></li>
+              <li><a href="/#pricing" onClick={(e) => handleHashNavigation(e, '#pricing')}>Pricing</a></li>
+              <li><Link href="/channels">Channel List</Link></li>
+              <li><a href="/#faq" onClick={(e) => handleHashNavigation(e, '#faq')}>FAQ</a></li>
+              <li><Link href="/blog">Blog</Link></li>
             </ul>
           </nav>
 

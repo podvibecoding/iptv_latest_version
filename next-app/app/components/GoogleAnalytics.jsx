@@ -10,7 +10,13 @@ export default function GoogleAnalytics() {
     const loadGAId = async () => {
       try {
         const apiUrl = getApiUrl()
-        const res = await fetch(`${apiUrl}/settings`)
+        const res = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
         const data = await res.json()
         if (data.google_analytics_measurement_id) {
           setGaId(data.google_analytics_measurement_id)

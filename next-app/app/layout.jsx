@@ -7,6 +7,10 @@ import { getApiUrl } from './lib/config'
 
 const inter = Inter({ subsets: ['latin'] })
 
+// Disable caching for dynamic content
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 async function getSettings() {
   try {
     const apiUrl = getApiUrl()

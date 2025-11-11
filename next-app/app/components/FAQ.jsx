@@ -20,7 +20,13 @@ export default function FAQ() {
     const loadFaqs = async () => {
       try {
         const apiUrl = getApiUrl()
-        const res = await fetch(`${apiUrl}/faqs`)
+        const res = await fetch(`${apiUrl}/faqs?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
         if (!res.ok) throw new Error('Failed to fetch FAQs')
         const data = await res.json()
         if (Array.isArray(data) && data.length) {

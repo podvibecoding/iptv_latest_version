@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FaLock, FaCheckCircle, FaTimesCircle } from 'react-icons/fa'
+import Alert from '../components/Alert'
 
 function getApiUrl() {
   if (typeof window !== 'undefined') {
@@ -292,57 +293,30 @@ function ResetPasswordForm() {
               )}
 
               {/* Error */}
-              {error && (
-                <div style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.5)',
-                  borderRadius: '0.75rem',
-                  padding: '1rem',
-                  marginBottom: '1.5rem',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.75rem'
-                }}>
-                  <svg style={{ width: '1.25rem', height: '1.25rem', color: '#ef4444', flexShrink: 0, marginTop: '0.125rem' }} fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                  <p style={{ color: '#fca5a5', fontSize: '0.875rem', fontWeight: '500', margin: 0 }}>{error}</p>
-                </div>
-              )}
+              {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
               {/* Success */}
               {success && (
-                <div style={{
-                  background: 'rgba(34, 197, 94, 0.1)',
-                  border: '1px solid rgba(34, 197, 94, 0.5)',
-                  borderRadius: '0.75rem',
-                  padding: '1.25rem',
-                  marginBottom: '1.5rem'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                    <svg style={{ width: '1.5rem', height: '1.5rem', color: '#22c55e', flexShrink: 0 }} fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <div style={{ flex: 1 }}>
-                      <h3 style={{ color: '#22c55e', fontWeight: 'bold', fontSize: '1.125rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FaCheckCircle /> Password Reset Successful!
-                      </h3>
-                      <p style={{ color: '#86efac', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: '0' }}>{success}</p>
-                      <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Alert 
+                  type="success" 
+                  message={
+                    <div>
+                      <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Password Reset Successful!</div>
+                      <div>{success}</div>
+                      <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', opacity: 0.9 }}>
                         <div className="spinner" style={{
-                          width: '1rem',
-                          height: '1rem',
-                          border: '2px solid #9ca3af',
-                          borderTop: '2px solid #fff',
-                          borderRadius: '50%'
+                          width: '14px',
+                          height: '14px',
+                          border: '2px solid rgba(134, 255, 0, 0.3)',
+                          borderTop: '2px solid #86ff00',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
                         }}></div>
-                        <p style={{ color: '#9ca3af', fontSize: '0.875rem', margin: 0 }}>
-                          Redirecting to login in <span style={{ fontWeight: 'bold', color: '#fff' }}>{countdown}</span> seconds...
-                        </p>
+                        Redirecting to login in <strong>{countdown}</strong> seconds...
                       </div>
                     </div>
-                  </div>
-                </div>
+                  } 
+                />
               )}
 
               {/* Form */}

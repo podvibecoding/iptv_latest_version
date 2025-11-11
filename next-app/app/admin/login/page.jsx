@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getApiUrl } from '../../lib/config'
+import Alert from '../components/Alert'
 
 export default function AdminLogin() {
   const router = useRouter()
@@ -132,32 +133,8 @@ export default function AdminLogin() {
           Sign in to manage your IPTV website
         </p>
 
-        {error && (
-          <div style={{
-            background: '#ff4444',
-            color: 'white',
-            padding: '12px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-            fontSize: '14px'
-          }}>
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div style={{
-            background: '#2d5016',
-            color: '#86ff00',
-            padding: '12px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-            fontSize: '14px',
-            border: '1px solid #86ff00'
-          }}>
-            {success}
-          </div>
-        )}
+        {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+        {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '20px' }}>

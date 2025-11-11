@@ -1,3 +1,5 @@
+import './admin-alerts.css'
+
 export const metadata = {
   title: {
     default: 'Admin Panel - IPTV ACCESS',

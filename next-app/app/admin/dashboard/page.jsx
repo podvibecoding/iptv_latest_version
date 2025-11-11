@@ -1,5 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Alert from '../components/Alert'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getApiUrl, getApiBase } from '../../lib/config'
@@ -55,6 +57,13 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('1')
   const [newTabName, setNewTabName] = useState('')
   const [message, setMessage] = useState({ type: '', text: '' })
+  const [confirmDialog, setConfirmDialog] = useState({ 
+    isOpen: false, 
+    type: '', // 'tab' or 'plan'
+    id: null, 
+    name: '',
+    action: null 
+  })
   
   // FAQs state
   const [faqs, setFaqs] = useState([])
@@ -226,10 +235,18 @@ export default function AdminDashboard() {
   }
 
   const deleteDeviceTab = async (tab) => {
-    if (!confirm(`Are you sure you want to delete the "${tab}" device tab? This will delete ALL plans under this tab.`)) {
-      return
-    }
+    setConfirmDialog({
+      isOpen: true,
+      type: 'tab',
+      id: tab,
+      name: tab,
+      action: confirmDeleteTab
+    })
+  }
 
+  const confirmDeleteTab = async () => {
+    const tab = confirmDialog.id
+    
     try {
       const apiUrl = getApiUrl()
       const res = await fetch(`${apiUrl}/plans/device-tabs/${tab}`, {
@@ -478,11 +495,19 @@ export default function AdminDashboard() {
     }
   }
 
-  const deletePlan = async (planId) => {
-    if (!confirm('Are you sure you want to delete this plan?')) {
-      return
-    }
+  const deletePlan = async (planId, planName) => {
+    setConfirmDialog({
+      isOpen: true,
+      type: 'plan',
+      id: planId,
+      name: planName,
+      action: confirmDeletePlan
+    })
+  }
 
+  const confirmDeletePlan = async () => {
+    const planId = confirmDialog.id
+    
     try {
       const apiUrl = getApiUrl()
       const res = await fetch(`${apiUrl}/plans/${planId}`, {
@@ -773,22 +798,11 @@ export default function AdminDashboard() {
         overflowY: 'auto'
       }}>
         {message.text && (
-          <div style={{
-            padding: '16px 24px',
-            borderRadius: '12px',
-            marginBottom: '24px',
-            background: message.type === 'success' ? '#2d5016' : '#8b1e1e',
-            border: `1px solid ${message.type === 'success' ? '#86ff00' : '#ff4444'}`,
-            color: '#fff',
-            fontSize: '15px',
-            fontWeight: '500',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
-            {message.type === 'success' ? <FaCheckCircle size={20} /> : <FaTimesCircle size={20} />}
-            {message.text}
-          </div>
+          <Alert 
+            type={message.type === 'success' ? 'success' : 'error'} 
+            message={message.text}
+            onClose={() => setMessage({ text: '', type: '' })}
+          />
         )}
 
         {/* Analytics Section */}
@@ -920,19 +934,8 @@ function AnalyticsSection({ liveVisitors, analyticsMessage, googleAnalyticsId, s
           Active users on your website
         </div>
         {analyticsMessage && (
-          <div style={{
-            marginTop: '24px',
-            padding: '14px',
-            background: '#3a2a00',
-            border: '1px solid #ffa500',
-            borderRadius: '8px',
-            color: '#ffa500',
-            fontSize: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <FaInfoCircle /> {analyticsMessage}
+          <div style={{ marginTop: '24px' }}>
+            <Alert type="info" message={analyticsMessage} />
           </div>
         )}
       </div>
@@ -2392,7 +2395,7 @@ function PlanCard({ plan, onUpdate, onDelete }) {
                 Edit
               </button>
               <button
-                onClick={() => onDelete(plan.id)}
+                onClick={() => onDelete(plan.id, plan.name)}
                 style={{
                   padding: '10px 20px',
                   borderRadius: '8px',
@@ -2609,6 +2612,21 @@ function FaqItem({ faq, onSave, onDelete }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, type: '', id: null, name: '', action: null })}
+        onConfirm={confirmDialog.action}
+        title={confirmDialog.type === 'tab' ? 'Delete Device Tab' : 'Delete Plan'}
+        message={
+          confirmDialog.type === 'tab'
+            ? `Are you sure you want to delete the "${confirmDialog.name}" device tab? This will delete ALL plans under this tab.`
+            : `Are you sure you want to delete the plan "${confirmDialog.name}"? This action cannot be undone.`
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   )
 }

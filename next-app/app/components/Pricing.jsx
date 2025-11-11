@@ -67,7 +67,13 @@ export default function Pricing() {
   const loadDeviceTabs = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/device-tabs`)
+      const res = await fetch(`${apiUrl}/plans/device-tabs?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      })
       if (!res.ok) throw new Error('Failed to fetch tabs')
       const data = await res.json()
       setDeviceTabs(data)
@@ -85,7 +91,13 @@ export default function Pricing() {
   const loadPlans = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans`)
+      const res = await fetch(`${apiUrl}/plans?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      })
       if (!res.ok) throw new Error('Failed to fetch')
       const data = await res.json()
       setPlans(data)
@@ -104,7 +116,13 @@ export default function Pricing() {
   const loadWhatsAppNumber = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/settings`)
+      const res = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      })
       if (!res.ok) throw new Error('Failed to fetch settings')
       const data = await res.json()
       setWhatsappNumber(data.whatsapp_number || '')

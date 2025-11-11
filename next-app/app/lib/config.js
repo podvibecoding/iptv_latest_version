@@ -24,8 +24,21 @@ export function getApiUrl() {
 }
 
 export function getApiBase() {
-  const apiUrl = getApiUrl();
-  return apiUrl.replace('/api', '');
+  // Check if we're in browser (client-side)
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    
+    // In development (localhost), return backend URL
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+    
+    // In production, return base URL WITHOUT /api
+    return 'https://api.365upstream.com';
+  }
+  
+  // Server-side: return base URL without /api
+  return 'https://api.365upstream.com';
 }
 
 // Legacy exports - kept for compatibility but components should use getApiUrl() function

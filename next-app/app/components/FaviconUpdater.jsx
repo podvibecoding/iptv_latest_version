@@ -1,13 +1,26 @@
 'use client'
 
 import { useEffect } from 'react'
+import { getApiUrl } from '../lib/config'
 
 export default function FaviconUpdater() {
   useEffect(() => {
     const updateFavicon = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
-        const response = await fetch(`${apiUrl}/settings`)
+        const apiUrl = getApiUrl()
+        const response = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
+        
+        if (!response.ok) {
+          console.warn('Failed to fetch favicon settings')
+          return
+        }
+        
         const settings = await response.json()
         
         if (settings.favicon_url) {

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getApiUrl } from '../../../lib/config'
 import Toast from '../../../components/Toast'
+import ConfirmDialog from '../../components/ConfirmDialog'
 
 export default function BlogsManagementPage() {
   const router = useRouter()
@@ -12,6 +13,7 @@ export default function BlogsManagementPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [toast, setToast] = useState(null)
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, blogId: null, blogTitle: '' })
 
   useEffect(() => {
     checkAuth()
@@ -71,11 +73,15 @@ export default function BlogsManagementPage() {
   }
 
   const handleDelete = async (id, title) => {
-    if (!confirm(`Are you sure you want to delete "${title}"?`)) return
+    setConfirmDialog({ isOpen: true, blogId: id, blogTitle: title })
+  }
 
+  const confirmDelete = async () => {
+    const { blogId } = confirmDialog
+    
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/admin/blogs/${id}`, {
+      const res = await fetch(`${apiUrl}/admin/blogs/${blogId}`, {
         method: 'DELETE',
         credentials: 'include'
       })
@@ -531,6 +537,17 @@ export default function BlogsManagementPage() {
           }
         }
       `}</style>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, blogId: null, blogTitle: '' })}
+        onConfirm={confirmDelete}
+        title="Delete Blog Post"
+        message={`Are you sure you want to delete "${confirmDialog.blogTitle}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   )
 }
