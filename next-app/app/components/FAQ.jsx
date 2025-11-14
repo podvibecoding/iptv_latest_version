@@ -2,19 +2,27 @@
 import React, { useEffect, useState } from 'react'
 import { getApiUrl } from '../lib/config'
 
-const DEFAULT_FAQ = [
-  { question: 'What is TITAN IPTV?', answer: 'TITAN IPTV is a premium IPTV service offering access to over 40,000 live channels and 54,000+ VOD titles from around the world. Compatible with Smart TV, Android, iOS, Windows, and more.' },
-  { question: 'How do I get started?', answer: 'Simply choose a subscription plan, complete your purchase, and you\'ll receive login credentials via email within minutes. Install our app or configure your device, and start streaming immediately.' },
-  { question: 'What devices are supported?', answer: 'TITAN IPTV works on Smart TVs, Android devices, iOS (iPhone/iPad), Windows, Mac, Amazon Fire Stick, MAG boxes, and most IPTV-compatible devices.' },
-  { question: 'Is there a free trial available?', answer: 'Yes! We offer a free trial so you can test our service quality and channel selection before committing to a paid subscription.' },
-  { question: 'Can I use one subscription on multiple devices?', answer: 'Our plans support multiple connections depending on the package you choose. Check the pricing section for details on simultaneous device usage.' },
-  { question: 'What if I experience buffering or technical issues?', answer: 'Our support team is available 24/7 to help with any technical issues. We also provide setup guides and troubleshooting resources to ensure smooth streaming.' }
-]
-
 export default function FAQ() {
   const [openIndex, setOpenIndex] = useState(null)
-  const [faqs, setFaqs] = useState(DEFAULT_FAQ)
-  const [loaded, setLoaded] = useState(false)
+  const [faqs, setFaqs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [heading, setHeading] = useState('Frequently Asked Questions')
+
+  useEffect(() => {
+    const loadHeading = async () => {
+      try {
+        const apiUrl = getApiUrl()
+        const res = await fetch(`${apiUrl}/sections/faq`, { cache: 'no-store' })
+        if (res.ok) {
+          const data = await res.json()
+          setHeading(data.heading || 'Frequently Asked Questions')
+        }
+      } catch (error) {
+        // Use default heading on error
+      }
+    }
+    loadHeading()
+  }, [])
 
   useEffect(() => {
     const loadFaqs = async () => {
@@ -29,13 +37,13 @@ export default function FAQ() {
         })
         if (!res.ok) throw new Error('Failed to fetch FAQs')
         const data = await res.json()
-        if (Array.isArray(data) && data.length) {
-          setFaqs(data.map(x => ({ question: x.question, answer: x.answer })))
-        }
+        // Backend returns { success: true, faqs: [...] }
+        setFaqs(data.success && Array.isArray(data.faqs) ? data.faqs : [])
       } catch (e) {
-        console.warn('Using default FAQs due to error:', e.message)
+        console.error('Failed to load FAQs:', e.message)
+        setFaqs([])
       } finally {
-        setLoaded(true)
+        setLoading(false)
       }
     }
     loadFaqs()
@@ -43,12 +51,39 @@ export default function FAQ() {
 
   const toggle = (index) => setOpenIndex(openIndex === index ? null : index)
 
+  if (loading) {
+    return (
+      <section className="faq" id="faq">
+        <div className="container">
+          <h2>{heading}</h2>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+            Loading FAQs...
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (faqs.length === 0) {
+    return (
+      <section className="faq" id="faq">
+        <div className="container">
+          <h2>{heading}</h2>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+            <p>No FAQs available at the moment.</p>
+            <p style={{ fontSize: '14px', marginTop: '10px' }}>Please check back later or contact support.</p>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="faq" id="faq">
       <div className="container">
-        <h2>Frequently Asked Questions</h2>
+        <h2>{heading}</h2>
         <div className="faq-list">
-          {(loaded ? faqs : DEFAULT_FAQ).map((item, index) => (
+          {faqs.map((item, index) => (
             <div key={index} className={`faq-item ${openIndex === index ? 'active' : ''}`}>
               <button className="faq-question" onClick={() => toggle(index)} aria-expanded={openIndex === index}>
                 <span>{item.question}</span>

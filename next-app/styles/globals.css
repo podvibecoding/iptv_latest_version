@@ -30,11 +30,6 @@ a:visited{color:inherit;}
     background: #000;
 }
 
-/* Hide desktop nav when scrolled */
-.site-header.scrolled nav {
-    display: none;
-}
-
 .header-inner {
     display: flex;
     align-items: center;
@@ -470,8 +465,8 @@ nav a:hover {
 }
 
 .pricing-card.featured::before {
-    /* Popular badge centered at the very top (like the original) */
-    content: "Popular";
+    /* Popular badge centered at the very top (supports custom text via --badge-text) */
+    content: var(--badge-text, "Popular");
     position: absolute;
     top: -12px;
     left: 50%;

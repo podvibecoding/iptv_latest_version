@@ -29,13 +29,23 @@ export default function CreateBlogPage() {
 
   const checkAuth = async () => {
     try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        router.push('/admin/login')
+        return
+      }
+
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/auth/check`, {
+      const res = await fetch(`${apiUrl}/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         credentials: 'include'
       })
-      const data = await res.json()
       
-      if (!data.authenticated) {
+      if (!res.ok) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('admin')
         router.push('/admin/login')
         return
       }
@@ -44,6 +54,8 @@ export default function CreateBlogPage() {
       setLoading(false)
     } catch (error) {
       console.error('Auth check failed:', error)
+      localStorage.removeItem('token')
+      localStorage.removeItem('admin')
       router.push('/admin/login')
     }
   }
@@ -77,12 +89,16 @@ export default function CreateBlogPage() {
 
     try {
       setUploadingImage(true)
+      const token = localStorage.getItem('token')
       const apiUrl = getApiUrl()
       const formDataUpload = new FormData()
       formDataUpload.append('image', file)
 
       const res = await fetch(`${apiUrl}/upload/blog-image`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         credentials: 'include',
         body: formDataUpload
       })
@@ -116,12 +132,14 @@ export default function CreateBlogPage() {
 
     try {
       setSaving(true)
+      const token = localStorage.getItem('token')
       const apiUrl = getApiUrl()
       
-      const res = await fetch(`${apiUrl}/admin/blogs`, {
+      const res = await fetch(`${apiUrl}/blogs`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         credentials: 'include',
         body: JSON.stringify(formData)

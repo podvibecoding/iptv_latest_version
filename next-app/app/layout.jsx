@@ -13,14 +13,20 @@ export const revalidate = 0
 
 async function getSettings() {
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    
     const apiUrl = getApiUrl()
     const res = await fetch(`${apiUrl}/settings`, {
+      signal: controller.signal,
       cache: 'no-store'
     })
-    if (!res.ok) throw new Error('Failed to fetch settings')
+    
+    clearTimeout(timeoutId)
+    if (!res.ok) return null
     return await res.json()
   } catch (error) {
-    console.error('Failed to load settings for metadata:', error)
+    // Silent fail - backend not available
     return {
       site_title: 'IPTV ACCESS - Best IPTV Service Provider | 40,000+ Live Channels & VOD',
       site_description: 'IPTV ACCESS - Premium IPTV subscription with 40,000+ live TV channels, 54,000+ movies & series in HD/4K. Best IPTV service with anti-freeze technology, EPG guide, multi-device support. Free trial available. Get your IPTV subscription today!'

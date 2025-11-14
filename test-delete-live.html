@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Delete Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        button { padding: 10px 20px; margin: 10px 5px; font-size: 16px; cursor: pointer; }
+        .delete { background: #ff3333; color: white; border: none; }
+        .load { background: #0066ff; color: white; border: none; }
+        .login { background: #00ff00; color: black; border: none; }
+        pre { background: #000; padding: 15px; border: 1px solid #333; overflow-x: auto; }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        input { padding: 8px; font-size: 14px; margin: 5px; }
+        .tab-item { background: #2a2a2a; padding: 10px; margin: 5px; border: 1px solid #444; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Live Delete Diagnostic Tool</h1>
+    
+    <h2>Step 1: Login</h2>
+    <input type="email" id="email" value="ayoub-k10@hotmail.com" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+    <button class="login" onclick="login()">LOGIN</button>
+    <div id="login-status"></div>
+
+    <h2>Step 2: Load Current Tabs</h2>
+    <button class="load" onclick="loadTabs()">LOAD TABS</button>
+    <div id="tabs-container"></div>
+
+    <h2>Console Output</h2>
+    <pre id="console"></pre>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        let logs = [];
+
+        function log(msg, isError = false) {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = isError ? 'error' : 'success';
+            const line = `[${timestamp}] ${msg}`;
+            logs.push(line);
+            document.getElementById('console').innerHTML = 
+                logs.map(l => `<span class="${l.includes('❌') || l.includes('ERROR') ? 'error' : 'success'}">${l}</span>`).join('\n');
+            console.log(msg);
+        }
+
+        function authFetch(url, options = {}) {
+            const token = localStorage.getItem('token');
+            log(`🔐 Token: ${token ? 'EXISTS' : 'MISSING'}`);
+            
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            log(`📡 ${options.method || 'GET'} ${url}`);
+            
+            return fetch(url, { ...options, headers, credentials: 'include' });
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            log('=== LOGIN ===');
+            try {
+                const res = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok && data.token) {
+                    localStorage.setItem('token', data.token);
+                    log(`✅ Login successful: ${data.user.email}`);
+                    document.getElementById('login-status').innerHTML = 
+                        `<span class="success">✅ Logged in as ${data.user.email}</span>`;
+                } else {
+                    log(`❌ Login failed: ${data.error || data.message}`, true);
+                }
+            } catch (error) {
+                log(`❌ Login error: ${error.message}`, true);
+            }
+        }
+
+        async function loadTabs() {
+            log('=== LOADING TABS ===');
+            try {
+                const res = await authFetch(`${API_URL}/pricing`);
+                const data = await res.json();
+                
+                if (res.ok && data.success) {
+                    log(`✅ Loaded ${data.tabs.length} tabs`);
+                    
+                    let html = '';
+                    data.tabs.forEach(tab => {
+                        log(`  Tab ID: ${tab.id} (type: ${typeof tab.id}) - Name: "${tab.name}" - Plans: ${tab.plans.length}`);
+                        
+                        html += `
+                            <div class="tab-item">
+                                <strong>ID: ${tab.id}</strong> (type: ${typeof tab.id}) - ${tab.name} (${tab.plans.length} plans)
+                                <button class="delete" onclick="deleteTab(${tab.id}, '${tab.name}')">DELETE THIS TAB</button>
+                            </div>
+                        `;
+                    });
+                    
+                    document.getElementById('tabs-container').innerHTML = html;
+                } else {
+                    log(`❌ Failed to load tabs: ${data.error || data.message}`, true);
+                }
+            } catch (error) {
+                log(`❌ Error loading tabs: ${error.message}`, true);
+            }
+        }
+
+        async function deleteTab(tabId, tabName) {
+            log('=== DELETE TAB ===');
+            log(`Tab ID: ${tabId} (type: ${typeof tabId})`);
+            log(`Tab Name: ${tabName}`);
+            log(`URL: ${API_URL}/pricing/tabs/${tabId}`);
+            
+            if (!confirm(`Delete "${tabName}" (ID: ${tabId})?`)) {
+                log('❌ Delete cancelled');
+                return;
+            }
+            
+            try {
+                const res = await authFetch(`${API_URL}/pricing/tabs/${tabId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                
+                log(`Response status: ${res.status} ${res.statusText}`);
+                log(`Response ok: ${res.ok}`);
+                
+                const data = await res.json();
+                log(`Response data: ${JSON.stringify(data, null, 2)}`);
+                
+                if (res.ok && data.success) {
+                    log(`✅ TAB DELETED SUCCESSFULLY!`);
+                    await loadTabs(); // Reload
+                } else {
+                    log(`❌ DELETE FAILED: ${data.error || data.message}`, true);
+                    log(`Status: ${res.status}`, true);
+                }
+            } catch (error) {
+                log(`❌ DELETE ERROR: ${error.message}`, true);
+            }
+        }
+
+        // Auto-check for token
+        if (localStorage.getItem('token')) {
+            log('✅ Token found in localStorage');
+            document.getElementById('login-status').innerHTML = 
+                '<span class="success">✅ Token exists - try loading tabs</span>';
+        } else {
+            log('⚠️ No token - please login first');
+        }
+    </script>
+</body>
+</html>

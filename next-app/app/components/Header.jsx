@@ -38,21 +38,25 @@ export default function Header() {
 
   const loadSettings = async () => {
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+      
       const apiUrl = getApiUrl()
       const apiBase = getApiBase()
-      // Add timestamp to force cache busting
       const res = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
+        signal: controller.signal,
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
+          'Pragma': 'no-cache'
         }
       })
+      
+      clearTimeout(timeoutId)
       if (!res.ok) return
       const data = await res.json()
       
-      // Handle logo URL properly
+      // Handle logo URL properly (same as Footer)
       if (data.logo_url) {
         let fullLogoUrl = data.logo_url
         
@@ -74,8 +78,8 @@ export default function Header() {
       if (data.use_logo_image !== undefined) setUseLogoImage(data.use_logo_image)
       if (data.logo_width) setLogoWidth(data.logo_width)
       if (data.whatsapp_number) setWhatsappNumber(data.whatsapp_number)
-    } catch (error) {
-      console.error('Failed to load settings:', error)
+    } catch (e) {
+      // Silent fail - backend not available
     } finally {
       setIsLoaded(true)
     }

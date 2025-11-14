@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { getApiUrl } from '../../../lib/config'
+import { getApiUrl, getApiBase } from '../../../lib/config'
 import Toast from '../../../components/Toast'
 import ConfirmDialog from '../../components/ConfirmDialog'
 
@@ -14,6 +14,7 @@ export default function BlogsManagementPage() {
   const [filter, setFilter] = useState('all')
   const [toast, setToast] = useState(null)
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, blogId: null, blogTitle: '' })
+  const apiBase = getApiBase()
 
   useEffect(() => {
     checkAuth()
@@ -27,13 +28,23 @@ export default function BlogsManagementPage() {
 
   const checkAuth = async () => {
     try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        router.push('/admin/login')
+        return
+      }
+
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/auth/check`, {
+      const res = await fetch(`${apiUrl}/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         credentials: 'include'
       })
-      const data = await res.json()
       
-      if (!data.authenticated) {
+      if (!res.ok) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('admin')
         router.push('/admin/login')
         return
       }
@@ -41,6 +52,8 @@ export default function BlogsManagementPage() {
       setAuthenticated(true)
     } catch (error) {
       console.error('Auth check failed:', error)
+      localStorage.removeItem('token')
+      localStorage.removeItem('admin')
       router.push('/admin/login')
     }
   }
@@ -48,9 +61,13 @@ export default function BlogsManagementPage() {
   const loadBlogs = async () => {
     try {
       setLoading(true)
+      const token = localStorage.getItem('token')
       const apiUrl = getApiUrl()
       
-      const res = await fetch(`${apiUrl}/admin/blogs?limit=100`, {
+      const res = await fetch(`${apiUrl}/blogs/admin/all`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         credentials: 'include'
       })
 
@@ -62,7 +79,7 @@ export default function BlogsManagementPage() {
       if (!res.ok) throw new Error('Failed to fetch blogs')
 
       const data = await res.json()
-      // Backend returns {blogs: [], pagination: {}}
+      // Backend returns {success: true, blogs: []}
       setBlogs(data.blogs || [])
     } catch (error) {
       console.error('Error loading blogs:', error)
@@ -80,9 +97,13 @@ export default function BlogsManagementPage() {
     const { blogId } = confirmDialog
     
     try {
+      const token = localStorage.getItem('token')
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/admin/blogs/${blogId}`, {
+      const res = await fetch(`${apiUrl}/blogs/${blogId}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         credentials: 'include'
       })
 
@@ -171,11 +192,11 @@ export default function BlogsManagementPage() {
         <div className="header-content">
           <h1>Manage Blogs</h1>
           <div className="header-actions">
+            <Link href="/admin/dashboard" className="btn btn-back">
+              ← Dashboard
+            </Link>
             <Link href="/admin/blogs" className="btn btn-primary">
               + Create New Blog
-            </Link>
-            <Link href="/admin/dashboard" className="btn btn-secondary">
-              ← Dashboard
             </Link>
           </div>
         </div>
@@ -216,7 +237,10 @@ export default function BlogsManagementPage() {
               <div key={blog.id} className="blog-card">
                 {blog.featured_image && (
                   <div className="blog-image">
-                    <img src={blog.featured_image} alt={blog.title} />
+                    <img 
+                      src={blog.featured_image.startsWith('http') ? blog.featured_image : `${apiBase}${blog.featured_image}`} 
+                      alt={blog.title} 
+                    />
                   </div>
                 )}
                 <div className="blog-content">
@@ -283,6 +307,48 @@ export default function BlogsManagementPage() {
         .header-actions {
           display: flex;
           gap: 1rem;
+          align-items: center;
+        }
+
+        :global(.header-actions .btn) {
+          padding: 0.875rem 1.75rem;
+          border-radius: 10px;
+          font-weight: 800;
+          text-decoration: none;
+          cursor: pointer;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          display: inline-block;
+          text-align: center;
+          font-size: 1rem;
+          white-space: nowrap;
+        }
+
+        :global(.header-actions .btn-primary) {
+          background: linear-gradient(135deg, #86ff00 0%, #9fff33 100%);
+          color: #000;
+          box-shadow: 0 4px 15px rgba(134, 255, 0, 0.3);
+          font-weight: 900;
+          border: none;
+        }
+
+        :global(.header-actions .btn-primary:hover) {
+          background: linear-gradient(135deg, #9fff33 0%, #b3ff66 100%);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(134, 255, 0, 0.4);
+        }
+
+        :global(.header-actions .btn-back) {
+          background: transparent;
+          color: #fff;
+          border: 2px solid #3a3a3a;
+          font-weight: 700;
+        }
+
+        :global(.header-actions .btn-back:hover) {
+          background: rgba(255, 255, 255, 0.05);
+          border-color: #86ff00;
+          color: #86ff00;
+          transform: translateY(-2px);
         }
 
         .admin-main {
@@ -438,25 +504,53 @@ export default function BlogsManagementPage() {
         }
 
         .btn {
-          padding: 0.75rem 1.5rem;
-          border-radius: 8px;
-          font-weight: 700;
-          text-decoration: none;
-          border: none;
-          cursor: pointer;
-          transition: all 0.2s;
-          display: inline-block;
-          text-align: center;
+          padding: 0.875rem 1.75rem !important;
+          border-radius: 10px !important;
+          font-weight: 800 !important;
+          text-decoration: none !important;
+          border: none !important;
+          cursor: pointer !important;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          display: inline-block !important;
+          text-align: center !important;
+          font-size: 1rem !important;
+          white-space: nowrap !important;
         }
 
         .btn-primary {
-          background: #86ff00;
-          color: #000;
+          background: linear-gradient(135deg, #86ff00 0%, #9fff33 100%) !important;
+          color: #000 !important;
+          box-shadow: 0 4px 15px rgba(134, 255, 0, 0.3) !important;
+          font-weight: 900 !important;
+          border: none !important;
         }
 
         .btn-primary:hover {
-          background: #a0ff40;
-          transform: translateY(-1px);
+          background: linear-gradient(135deg, #9fff33 0%, #b3ff66 100%) !important;
+          transform: translateY(-2px) !important;
+          box-shadow: 0 6px 20px rgba(134, 255, 0, 0.4) !important;
+        }
+
+        .btn-primary:active {
+          transform: translateY(0) !important;
+        }
+
+        .btn-back {
+          background: transparent !important;
+          color: #fff !important;
+          border: 2px solid #3a3a3a !important;
+          font-weight: 700 !important;
+        }
+
+        .btn-back:hover {
+          background: rgba(255, 255, 255, 0.05) !important;
+          border-color: #86ff00 !important;
+          color: #86ff00 !important;
+          transform: translateY(-2px) !important;
+        }
+
+        .btn-back:active {
+          transform: translateY(0) !important;
         }
 
         .btn-secondary {
@@ -467,6 +561,7 @@ export default function BlogsManagementPage() {
 
         .btn-secondary:hover {
           background: #3a3a3a;
+          transform: translateY(-1px);
         }
 
         :global(a.btn-edit) {

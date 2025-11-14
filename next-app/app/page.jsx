@@ -22,8 +22,8 @@ export const revalidate = 0
 export async function generateMetadata() {
   const settings = await getSettings()
   
-  const title = settings.site_title || 'IPTV ACCESS - Best IPTV Service Provider | 40,000+ Live Channels & VOD Streaming'
-  const description = settings.site_description || 'Get the best IPTV subscription with IPTV ACCESS. Stream 40,000+ live TV channels, 54,000+ movies & series in HD/4K. Premium IPTV with anti-freeze technology, EPG guide, multi-device support for Smart TV, Android, iOS, Firestick. Free trial available. Affordable IPTV packages starting at $10.99/month.'
+  const title = settings?.site_title || 'IPTV ACCESS - Best IPTV Service Provider | 40,000+ Live Channels & VOD Streaming'
+  const description = settings?.site_description || 'Get the best IPTV subscription with IPTV ACCESS. Stream 40,000+ live TV channels, 54,000+ movies & series in HD/4K. Premium IPTV with anti-freeze technology, EPG guide, multi-device support for Smart TV, Android, iOS, Firestick. Free trial available. Affordable IPTV packages starting at $10.99/month.'
   
   return {
     title: title,

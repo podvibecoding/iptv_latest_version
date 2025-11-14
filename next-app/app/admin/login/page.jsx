@@ -30,7 +30,8 @@ export default function AdminLogin() {
       }
 
       // Use relative URL - Next.js proxy will forward to backend
-      const loginUrl = '/api/auth/login'
+      const apiUrl = getApiUrl()
+      const loginUrl = `${apiUrl}/auth/login`
       console.log('Attempting login to:', loginUrl)
       console.log('Request body:', JSON.stringify({ email, password }))
       
@@ -47,9 +48,22 @@ export default function AdminLogin() {
       console.log('Response received:', res.status, res.statusText)
 
       const data = await res.json()
+      console.log('Response data:', data)
 
       if (!res.ok) {
+        console.error('Login failed with data:', data)
         throw new Error(data.error || 'Login failed')
+      }
+
+      // Store the JWT token in localStorage
+      if (data.token) {
+        localStorage.setItem('token', data.token)
+        console.log('✅ Token stored successfully')
+      }
+
+      // Store admin info if needed
+      if (data.admin) {
+        localStorage.setItem('admin', JSON.stringify(data.admin))
       }
 
       router.push('/admin/dashboard')

@@ -1,232 +1,192 @@
 const express = require('express');
-const router = express.Router();
-const pool = require('../config/database');
+const db = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 
-// Helper function to generate slug from title (auto-generates SEO-friendly URLs)
-function generateSlug(title) {
+const router = express.Router();
+
+// Generate slug from title
+const generateSlug = (title) => {
   return title
     .toLowerCase()
-    .trim()
     .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+};
 
-// Public: Get all published blogs (with pagination)
-router.get('/blogs', async (req, res) => {
+// Get all blogs with pagination (public)
+router.get('/', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    // Get total count
-    const [countResult] = await pool.query(
-      'SELECT COUNT(*) as total FROM blogs WHERE status = ?',
-      ['published']
+    const [blogs] = await db.query(
+      'SELECT * FROM blogs WHERE published = TRUE ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [limit, offset]
     );
+
+    const [countResult] = await db.query('SELECT COUNT(*) as total FROM blogs WHERE published = TRUE');
     const total = countResult[0].total;
 
-    // Get blogs
-    const [blogs] = await pool.query(
-      `SELECT id, title, slug, excerpt, featured_image, author, published_at, created_at 
-       FROM blogs 
-       WHERE status = ? 
-       ORDER BY published_at DESC 
-       LIMIT ? OFFSET ?`,
-      ['published', limit, offset]
-    );
-
     res.json({
+      success: true,
       blogs,
       pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit)
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalBlogs: total
       }
     });
   } catch (error) {
-    console.error('Error fetching blogs:', error);
-    res.status(500).json({ error: 'Failed to fetch blogs' });
+    console.error('Get blogs error:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Public: Get single blog by slug
-router.get('/blogs/:slug', async (req, res) => {
+// Get single blog by slug (public)
+router.get('/:slug', async (req, res) => {
   try {
-    const [blogs] = await pool.query(
-      'SELECT * FROM blogs WHERE slug = ? AND status = ?',
-      [req.params.slug, 'published']
-    );
+    const { slug } = req.params;
+    const [blogs] = await db.query('SELECT * FROM blogs WHERE slug = ? AND published = TRUE', [slug]);
 
     if (blogs.length === 0) {
-      return res.status(404).json({ error: 'Blog not found' });
+      return res.status(404).json({ success: false, error: 'Blog not found' });
     }
 
-    res.json(blogs[0]);
+    res.json({ success: true, blog: blogs[0] });
   } catch (error) {
-    console.error('Error fetching blog:', error);
-    res.status(500).json({ error: 'Failed to fetch blog' });
+    console.error('Get blog error:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Admin: Get all blogs (including drafts)
-router.get('/admin/blogs', authMiddleware, async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-    const status = req.query.status || 'all';
-
-    let whereClause = '';
-    let params = [];
-
-    if (status !== 'all') {
-      whereClause = 'WHERE status = ?';
-      params.push(status);
-    }
-
-    // Get total count
-    const [countResult] = await pool.query(
-      `SELECT COUNT(*) as total FROM blogs ${whereClause}`,
-      params
-    );
-    const total = countResult[0].total;
-
-    // Get blogs
-    const [blogs] = await pool.query(
-      `SELECT * FROM blogs ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
-    );
-
-    res.json({
-      blogs,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit)
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching admin blogs:', error);
-    res.status(500).json({ error: 'Failed to fetch blogs' });
-  }
-});
-
-// Admin: Get single blog by ID (for editing)
-router.get('/admin/blogs/:id', authMiddleware, async (req, res) => {
-  try {
-    const [blogs] = await pool.query('SELECT * FROM blogs WHERE id = ?', [req.params.id]);
-
-    if (blogs.length === 0) {
-      return res.status(404).json({ error: 'Blog not found' });
-    }
-
-    res.json(blogs[0]);
-  } catch (error) {
-    console.error('Error fetching blog:', error);
-    res.status(500).json({ error: 'Failed to fetch blog' });
-  }
-});
-
-// Admin: Create new blog
-router.post('/admin/blogs', authMiddleware, async (req, res) => {
+// Create blog (protected)
+router.post('/', authMiddleware, async (req, res) => {
   try {
     const { title, content, excerpt, featured_image, author, status } = req.body;
 
     if (!title || !content) {
-      return res.status(400).json({ error: 'Title and content are required' });
+      return res.status(400).json({ success: false, error: 'Title and content are required' });
     }
 
-    // Generate slug from title
-    let slug = generateSlug(title);
-    
-    // Check if slug exists and make it unique
-    const [existing] = await pool.query('SELECT id FROM blogs WHERE slug = ?', [slug]);
+    const slug = generateSlug(title);
+
+    // Check if slug exists
+    const [existing] = await db.query('SELECT id FROM blogs WHERE slug = ?', [slug]);
     if (existing.length > 0) {
-      slug = `${slug}-${Date.now()}`;
+      return res.status(400).json({ success: false, error: 'A blog with this title already exists' });
     }
 
-    const published_at = status === 'published' ? new Date() : null;
+    // Determine if blog should be published based on status
+    const published = status === 'published';
 
-    const [result] = await pool.query(
-      `INSERT INTO blogs (title, slug, content, excerpt, featured_image, author, status, published_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [title, slug, content, excerpt || '', featured_image || '', author || 'Admin', status || 'draft', published_at]
+    const [result] = await db.query(
+      'INSERT INTO blogs (title, slug, content, excerpt, featured_image, author, status, published) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, slug, content, excerpt || null, featured_image || null, author || 'Admin', status || 'draft', published]
     );
 
-    const [newBlog] = await pool.query('SELECT * FROM blogs WHERE id = ?', [result.insertId]);
-
-    res.status(201).json({ message: 'Blog created successfully', blog: newBlog[0] });
+    res.json({
+      success: true,
+      id: result.insertId,
+      slug,
+      message: 'Blog created successfully'
+    });
   } catch (error) {
-    console.error('Error creating blog:', error);
-    res.status(500).json({ error: 'Failed to create blog' });
+    console.error('Create blog error:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Admin: Update blog
-router.put('/admin/blogs/:id', authMiddleware, async (req, res) => {
+// Update blog (protected)
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
+    const { id } = req.params;
     const { title, content, excerpt, featured_image, author, status } = req.body;
-    const blogId = req.params.id;
 
-    if (!title || !content) {
-      return res.status(400).json({ error: 'Title and content are required' });
+    const updateFields = [];
+    const values = [];
+
+    if (title !== undefined) {
+      updateFields.push('title = ?', 'slug = ?');
+      values.push(title, generateSlug(title));
+    }
+    if (content !== undefined) {
+      updateFields.push('content = ?');
+      values.push(content);
+    }
+    if (excerpt !== undefined) {
+      updateFields.push('excerpt = ?');
+      values.push(excerpt);
+    }
+    if (featured_image !== undefined) {
+      updateFields.push('featured_image = ?');
+      values.push(featured_image);
+    }
+    if (author !== undefined) {
+      updateFields.push('author = ?');
+      values.push(author);
+    }
+    if (status !== undefined) {
+      updateFields.push('status = ?', 'published = ?');
+      values.push(status, status === 'published');
     }
 
-    // Get current blog
-    const [currentBlog] = await pool.query('SELECT * FROM blogs WHERE id = ?', [blogId]);
-    if (currentBlog.length === 0) {
-      return res.status(404).json({ error: 'Blog not found' });
+    if (updateFields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No fields to update' });
     }
 
-    // Generate new slug if title changed
-    let slug = currentBlog[0].slug;
-    if (title !== currentBlog[0].title) {
-      slug = generateSlug(title);
-      const [existing] = await pool.query('SELECT id FROM blogs WHERE slug = ? AND id != ?', [slug, blogId]);
-      if (existing.length > 0) {
-        slug = `${slug}-${Date.now()}`;
-      }
-    }
+    values.push(id);
 
-    // Update published_at if status changed to published
-    let published_at = currentBlog[0].published_at;
-    if (status === 'published' && currentBlog[0].status !== 'published') {
-      published_at = new Date();
-    }
-
-    await pool.query(
-      `UPDATE blogs 
-       SET title = ?, slug = ?, content = ?, excerpt = ?, featured_image = ?, author = ?, status = ?, published_at = ?
-       WHERE id = ?`,
-      [title, slug, content, excerpt || '', featured_image || '', author || 'Admin', status || 'draft', published_at, blogId]
+    await db.query(
+      `UPDATE blogs SET ${updateFields.join(', ')} WHERE id = ?`,
+      values
     );
 
-    const [updatedBlog] = await pool.query('SELECT * FROM blogs WHERE id = ?', [blogId]);
-
-    res.json({ message: 'Blog updated successfully', blog: updatedBlog[0] });
+    res.json({ success: true, message: 'Blog updated successfully' });
   } catch (error) {
-    console.error('Error updating blog:', error);
-    res.status(500).json({ error: 'Failed to update blog' });
+    console.error('Update blog error:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Admin: Delete blog
-router.delete('/admin/blogs/:id', authMiddleware, async (req, res) => {
+// Delete blog (protected)
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const [result] = await pool.query('DELETE FROM blogs WHERE id = ?', [req.params.id]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Blog not found' });
-    }
-
-    res.json({ message: 'Blog deleted successfully' });
+    const { id } = req.params;
+    await db.query('DELETE FROM blogs WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Blog deleted successfully' });
   } catch (error) {
-    console.error('Error deleting blog:', error);
-    res.status(500).json({ error: 'Failed to delete blog' });
+    console.error('Delete blog error:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Get all blogs for admin (protected)
+router.get('/admin/all', authMiddleware, async (req, res) => {
+  try {
+    const [blogs] = await db.query('SELECT * FROM blogs ORDER BY created_at DESC');
+    res.json({ success: true, blogs });
+  } catch (error) {
+    console.error('Get admin blogs error:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// Get single blog by ID for admin (protected)
+router.get('/admin/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [blogs] = await db.query('SELECT * FROM blogs WHERE id = ?', [id]);
+    
+    if (blogs.length === 0) {
+      return res.status(404).json({ success: false, error: 'Blog not found' });
+    }
+    
+    res.json(blogs[0]);
+  } catch (error) {
+    console.error('Get admin blog error:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 

@@ -1,4 +1,6 @@
-import React from 'react'
+'use client'
+import React, { useState, useEffect } from 'react'
+import { getApiUrl } from '../lib/config'
 
 const FEATURES = [
   {
@@ -34,10 +36,28 @@ const FEATURES = [
 ]
 
 export default function WhyChooseUs() {
+  const [heading, setHeading] = useState('Why Customers Choosing Us?')
+
+  useEffect(() => {
+    const loadHeading = async () => {
+      try {
+        const apiUrl = getApiUrl()
+        const res = await fetch(`${apiUrl}/sections/features`, { cache: 'no-store' })
+        if (res.ok) {
+          const data = await res.json()
+          setHeading(data.heading || 'Why Customers Choosing Us?')
+        }
+      } catch (error) {
+        // Use default heading on error
+      }
+    }
+    loadHeading()
+  }, [])
+
   return (
     <section className="why-choose-us">
       <div className="container">
-        <h2>Why Customers Choosing Us?</h2>
+        <h2>{heading}</h2>
         <div className="features-grid">
           {FEATURES.map((feature, index) => (
             <div key={index} className="feature-card">

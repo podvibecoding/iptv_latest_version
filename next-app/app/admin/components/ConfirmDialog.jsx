@@ -145,8 +145,8 @@ export default function ConfirmDialog({
           </button>
 
           <button
-            onClick={() => {
-              onConfirm()
+            onClick={async () => {
+              await onConfirm()
               onClose()
             }}
             style={{

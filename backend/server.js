@@ -1,131 +1,109 @@
-require('dotenv').config({ path: __dirname + '/.env' });
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const path = require('path');
-const logger = require('./utils/logger');
+const { initDatabase } = require('./config/database');
+const { verifyEmailConfig } = require('./config/email');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-// Robust CORS to support localhost and LAN access from Next.js dev server
-const isProd = (process.env.NODE_ENV || 'development') === 'production';
-const defaultFrontend = process.env.FRONTEND_URL || 'http://localhost:3000';
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
-let corsOptions;
-if (!isProd) {
-  // In development, allow specific localhost ports with credentials
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001'
-  ];
-  
-  corsOptions = {
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error('Not allowed by CORS: ' + origin));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    optionsSuccessStatus: 200
-  };
-} else {
-  const allowedOrigins = [
-    defaultFrontend,
-    'http://localhost:3000',
-    'http://127.0.0.1:3000'
-  ].filter(Boolean);
-  corsOptions = {
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error('Not allowed by CORS: ' + origin));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    optionsSuccessStatus: 200
-  };
-}
+// CORS Configuration - Allow all origins
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
+  exposedHeaders: ['Content-Length'],
+  optionsSuccessStatus: 200
+}));
+app.options('*', cors());
 
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
-
-// Lightweight request logger (helps diagnose CORS/preflight issues in dev)
-app.use((req, res, next) => {
-  logger.http(req.method, req.path);
-  next();
-});
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Serve uploaded files statically
+// Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Import routes
-const authRoutes = require('./routes/auth');
-const settingsRoutes = require('./routes/settings');
-const plansRoutes = require('./routes/plans');
-const uploadRoutes = require('./routes/upload');
-const faqsRoutes = require('./routes/faqs');
-const accountRoutes = require('./routes/account');
-const analyticsRoutes = require('./routes/analytics');
-const blogsRoutes = require('./routes/blogs');
-const sliderImagesRoutes = require('./routes/sliderImages');
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/plans', plansRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/faqs', faqsRoutes);
-app.use('/api/account', accountRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/slider-images', sliderImagesRoutes);
-app.use('/api', blogsRoutes);
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'IPTV Backend API is running',
-    timestamp: new Date().toISOString()
-  });
-});
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/settings', require('./routes/settings'));
+app.use('/api/upload', require('./routes/upload'));
+app.use('/api/faqs', require('./routes/faqs'));
+app.use('/api/blogs', require('./routes/blogs'));
+app.use('/api/blog-images', require('./routes/blogImages'));
+app.use('/api/pricing', require('./routes/pricing'));
+app.use('/api/stats', require('./routes/stats'));
+app.use('/api/slider-images', require('./routes/sliderImages'));
+app.use('/api/sections', require('./routes/sections'));
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ success: false, error: 'Endpoint not found' });
 });
 
-// Error handler
+// Global error handler
 app.use((err, req, res, next) => {
-  logger.error('Server error:', err);
+  console.error('Server error:', err);
   res.status(500).json({ 
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    success: false, 
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error' 
   });
 });
 
 // Start server
-app.listen(PORT, () => {
-  logger.success(`
+const startServer = async () => {
+  try {
+    // Initialize database
+    console.log('\n🚀 Starting IPTV Backend Server...\n');
+    await initDatabase();
+
+    // Verify email configuration (optional)
+    await verifyEmailConfig();
+
+    // Start Express server
+    app.listen(PORT, () => {
+      console.log(`
 ╔════════════════════════════════════════╗
 ║   IPTV Backend Server                  ║
-║   Port: ${PORT}                       ║
-║   Environment: ${process.env.NODE_ENV || 'development'}         ║
+║   Port: ${PORT.toString().padEnd(28)}║
+║   Environment: ${(process.env.NODE_ENV || 'development').padEnd(21)}║
 ║   Status: Running ✓                    ║
 ╚════════════════════════════════════════╝
-  `);
+      `);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('\n⏹️  SIGTERM received. Shutting down gracefully...');
+  const { closeDatabase } = require('./config/database');
+  await closeDatabase();
+  process.exit(0);
 });
 
-module.exports = app;
+process.on('SIGINT', async () => {
+  console.log('\n⏹️  SIGINT received. Shutting down gracefully...');
+  const { closeDatabase } = require('./config/database');
+  await closeDatabase();
+  process.exit(0);
+});
+
+startServer();

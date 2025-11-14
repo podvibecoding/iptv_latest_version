@@ -9,15 +9,21 @@ export const revalidate = 0
 
 async function getBlogs(page = 1) {
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    
     const apiUrl = getApiUrl()
     const res = await fetch(`${apiUrl}/blogs?page=${page}&limit=9`, {
+      signal: controller.signal,
       cache: 'no-store',
       next: { revalidate: 0 }
     })
+    
+    clearTimeout(timeoutId)
     if (!res.ok) throw new Error('Failed to fetch blogs')
     return await res.json()
   } catch (error) {
-    console.error('Error loading blogs:', error)
+    // Silent fail - backend not available
     return { blogs: [], pagination: { totalPages: 1, currentPage: 1 } }
   }
 }

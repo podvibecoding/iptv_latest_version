@@ -8,8 +8,33 @@ import { getApiUrl, getApiBase } from '../../lib/config'
 import { FaChartLine, FaLock, FaCog, FaDollarSign, FaQuestionCircle, FaDoorOpen, FaCheckCircle, FaTimesCircle, FaPlus, FaEdit, FaTrash, FaMobileAlt, FaInfoCircle, FaSave, FaTimes, FaCircle, FaExclamationTriangle, FaChevronLeft, FaChevronRight, FaBlog } from 'react-icons/fa'
 import Toast from '../../components/Toast'
 
+// Helper function to add Authorization header to fetch requests
+const authFetch = (url, options = {}) => {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('authFetch can only be called in the browser'))
+  }
+  
+  const token = localStorage.getItem('token')
+  const headers = {
+    ...options.headers,
+  }
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  
+  return fetch(url, {
+    ...options,
+    headers
+  }).catch(error => {
+    console.error('Fetch error:', error)
+    throw error
+  })
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
@@ -50,6 +75,9 @@ export default function AdminDashboard() {
   const [channelsSliders, setChannelsSliders] = useState([])
   const [uploadingSlider, setUploadingSlider] = useState(null)
   
+  // Sections state
+  const [sections, setSections] = useState([])
+  
   // Account settings state
   const [currentEmail, setCurrentEmail] = useState('')
   const [newEmail, setNewEmail] = useState('')
@@ -60,6 +88,7 @@ export default function AdminDashboard() {
   
   // Plans state
   const [plans, setPlans] = useState([])
+  const [pricingTabs, setPricingTabs] = useState([]) // Store full tab objects
   const [deviceTabs, setDeviceTabs] = useState([])
   const [activeTab, setActiveTab] = useState('1')
   const [newTabName, setNewTabName] = useState('')
@@ -77,12 +106,19 @@ export default function AdminDashboard() {
   const [newFaqQ, setNewFaqQ] = useState('')
   const [newFaqA, setNewFaqA] = useState('')
 
+  // Mounted state to prevent SSR issues
   useEffect(() => {
-    checkAuth()
+    setMounted(true)
   }, [])
 
   useEffect(() => {
-    if (authenticated) {
+    if (mounted) {
+      checkAuth()
+    }
+  }, [mounted])
+
+  useEffect(() => {
+    if (mounted && authenticated) {
       loadSettings()
       loadPlans()
       loadDeviceTabs()
@@ -90,21 +126,24 @@ export default function AdminDashboard() {
       loadAccountInfo()
       loadAnalytics()
       loadSliderImages()
+      loadSections()
       
       const interval = setInterval(loadAnalytics, 30000)
       return () => clearInterval(interval)
     }
-  }, [authenticated])
+  }, [mounted, authenticated])
 
   // Expose toast function for child components
   useEffect(() => {
-    window.showDashboardToast = (message, type = 'info') => {
-      setToast({ message, type })
+    if (mounted && typeof window !== 'undefined') {
+      window.showDashboardToast = (message, type = 'info') => {
+        setToast({ message, type })
+      }
+      return () => {
+        delete window.showDashboardToast
+      }
     }
-    return () => {
-      delete window.showDashboardToast
-    }
-  }, [])
+  }, [mounted])
 
   // Persist active section to localStorage
   useEffect(() => {
@@ -115,19 +154,40 @@ export default function AdminDashboard() {
 
   const checkAuth = async () => {
     try {
+      // Ensure we're in browser environment
+      if (typeof window === 'undefined') {
+        return
+      }
+      
+      // Check if token exists in localStorage
+      const token = localStorage.getItem('token')
+      if (!token) {
+        router.push('/admin/login')
+        setLoading(false)
+        return
+      }
+
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/auth/check`, {
+      const res = await authFetch(`${apiUrl}/auth/me`, {
         credentials: 'include'
       })
-      const data = await res.json()
       
-      if (!data.authenticated) {
+      if (!res.ok) {
+        // Token invalid or expired
+        localStorage.removeItem('token')
+        localStorage.removeItem('admin')
         router.push('/admin/login')
         return
       }
       
+      const data = await res.json()
       setAuthenticated(true)
     } catch (error) {
+      console.error('Auth check failed:', error)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token')
+        localStorage.removeItem('admin')
+      }
       router.push('/admin/login')
     } finally {
       setLoading(false)
@@ -137,11 +197,11 @@ export default function AdminDashboard() {
   const loadAccountInfo = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/account/info`, {
+      const res = await authFetch(`${apiUrl}/auth/me`, {
         credentials: 'include'
       })
       const data = await res.json()
-      setCurrentEmail(data.email || '')
+      setCurrentEmail(data.admin?.email || '')
     } catch (error) {
       console.error('Failed to load account info:', error)
     }
@@ -150,7 +210,7 @@ export default function AdminDashboard() {
   const loadAnalytics = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/analytics/realtime`, {
+      const res = await authFetch(`${apiUrl}/analytics/realtime`, {
         credentials: 'include'
       })
       const data = await res.json()
@@ -168,7 +228,7 @@ export default function AdminDashboard() {
   const loadSettings = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/settings`)
+      const res = await authFetch(`${apiUrl}/settings`)
       const data = await res.json()
       setLogoUrl(data.logo_url || '')
       setLogoText(data.logo_text || '')
@@ -196,11 +256,11 @@ export default function AdminDashboard() {
       
       // Load sliders for all sections
       const [heroRes, streamingRes, moviesRes, sportsRes, channelsRes] = await Promise.all([
-        fetch(`${apiUrl}/slider-images?section=hero`, { cache: 'no-store' }),
-        fetch(`${apiUrl}/slider-images?section=streaming`, { cache: 'no-store' }),
-        fetch(`${apiUrl}/slider-images?section=movies`, { cache: 'no-store' }),
-        fetch(`${apiUrl}/slider-images?section=sports`, { cache: 'no-store' }),
-        fetch(`${apiUrl}/slider-images?section=channels`, { cache: 'no-store' })
+        authFetch(`${apiUrl}/slider-images?section=hero`, { cache: 'no-store' }),
+        authFetch(`${apiUrl}/slider-images?section=streaming`, { cache: 'no-store' }),
+        authFetch(`${apiUrl}/slider-images?section=movies`, { cache: 'no-store' }),
+        authFetch(`${apiUrl}/slider-images?section=sports`, { cache: 'no-store' }),
+        authFetch(`${apiUrl}/slider-images?section=channels`, { cache: 'no-store' })
       ])
       
       const [heroData, streamingData, moviesData, sportsData, channelsData] = await Promise.all([
@@ -229,28 +289,78 @@ export default function AdminDashboard() {
     }
   }
 
+  const loadSections = async () => {
+    try {
+      const apiUrl = getApiUrl()
+      const res = await authFetch(`${apiUrl}/sections`)
+      const data = await res.json()
+      setSections(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Failed to load sections:', error)
+      setSections([])
+    }
+  }
+
   const loadPlans = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans`)
+      const res = await authFetch(`${apiUrl}/pricing`)
       const data = await res.json()
-      setPlans(data)
+      
+      if (data.tabs && Array.isArray(data.tabs)) {
+        // Store full tab objects
+        setPricingTabs(data.tabs)
+        
+        // Extract all plans with tab_id reference
+        const allPlans = []
+        data.tabs.forEach(tab => {
+          if (tab.plans && Array.isArray(tab.plans)) {
+            tab.plans.forEach(plan => {
+              allPlans.push({ ...plan, tab_id: tab.id, tab_name: tab.name })
+            })
+          }
+        })
+        setPlans(allPlans)
+      } else {
+        setPricingTabs([])
+        setPlans([])
+      }
     } catch (error) {
       console.error('Failed to load plans:', error)
+      setPricingTabs([])
+      setPlans([]) // Ensure it's always an array
     }
   }
 
   const loadDeviceTabs = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/device-tabs`)
+      const cacheBuster = `?_=${Date.now()}&rand=${Math.random()}`
+      const res = await authFetch(`${apiUrl}/pricing${cacheBuster}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      })
       const data = await res.json()
-      setDeviceTabs(data)
-      if (data.length > 0 && !data.includes(activeTab)) {
-        setActiveTab(data[0])
+      const tabs = data.tabs && Array.isArray(data.tabs) ? data.tabs : []
+      setDeviceTabs(tabs)
+      setPricingTabs(tabs)
+      if (tabs.length > 0) {
+        // If current active tab doesn't exist, switch to first tab
+        if (!tabs.find(t => String(t.id) === String(activeTab))) {
+          console.log('Setting active tab to:', tabs[0].id)
+          setActiveTab(String(tabs[0].id))
+        }
+      } else {
+        console.log('No tabs found, clearing active tab')
+        setActiveTab('')
       }
+      return tabs  // Return tabs so we can use them immediately
     } catch (error) {
       console.error('Failed to load device tabs:', error)
+      return []
     }
   }
 
@@ -262,11 +372,11 @@ export default function AdminDashboard() {
 
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/device-tabs`, {
+      const res = await authFetch(`${apiUrl}/pricing/tabs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ tabName: newTabName.trim() })
+        body: JSON.stringify({ name: newTabName.trim() })
       })
 
       const data = await res.json()
@@ -275,46 +385,129 @@ export default function AdminDashboard() {
 
       showMessage('success', 'Device tab created successfully!')
       setNewTabName('')
-      loadDeviceTabs()
-      loadPlans()
+      await loadDeviceTabs()
+      await loadPlans()
     } catch (error) {
       showMessage('error', error.message)
     }
   }
 
-  const deleteDeviceTab = async (tab) => {
+  const deleteDeviceTab = async (tabId, tabName) => {
+    // Validate input parameters
+    if (!tabId) {
+      showMessage('error', 'Invalid tab: Missing ID')
+      return
+    }
+
+    if (!tabName) {
+      showMessage('error', 'Invalid tab: Missing name')
+      return
+    }
+
+    // Verify tab exists in current state
+    const tabExists = deviceTabs.some(tab => tab.id === tabId)
+    if (!tabExists) {
+      showMessage('warning', 'Tab not found in current list. Refreshing...')
+      await loadDeviceTabs()
+      return
+    }
+
+    // Show confirmation dialog
     setConfirmDialog({
       isOpen: true,
       type: 'tab',
-      id: tab,
-      name: tab,
-      action: confirmDeleteTab
+      id: tabId,
+      name: tabName,
+      action: () => confirmDeleteTab(tabId, tabName)
     })
   }
 
-  const confirmDeleteTab = async () => {
-    const tab = confirmDialog.id
+  const confirmDeleteTab = async (tabId, tabName) => {
+    // Validate parameters
+    if (!tabId) {
+      showMessage('error', 'Cannot delete tab: Invalid ID')
+      return
+    }
+
+    const apiUrl = getApiUrl()
     
     try {
-      const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/device-tabs/${tab}`, {
+      // Perform delete request
+      const response = await authFetch(`${apiUrl}/pricing/tabs/${tabId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       })
 
-      const data = await res.json()
-      
-      if (!res.ok) throw new Error(data.error)
+      // Parse response
+      const data = await response.json()
 
-      showMessage('success', 'Device tab deleted successfully!')
-      loadDeviceTabs()
-      loadPlans()
+      // Handle response status
+      if (!response.ok) {
+        // Handle specific error cases
+        if (response.status === 404) {
+          showMessage('warning', 'Tab already deleted or not found')
+        } else if (response.status === 403) {
+          showMessage('error', 'Unauthorized to delete this tab')
+        } else {
+          showMessage('error', data.error || `Failed to delete tab (Error ${response.status})`)
+        }
+        
+        // Refresh to sync with server state
+        await Promise.all([
+          loadDeviceTabs(),
+          loadPlans()
+        ])
+        return
+      }
+
+      // Success - update UI
+      showMessage('success', 'Tab deleted successfully!')
+
+      // Update local state immediately for better UX
+      setDeviceTabs(prev => prev.filter(tab => tab.id !== tabId))
+      setPricingTabs(prev => prev.filter(tab => tab.id !== tabId))
+      setPlans(prev => prev.filter(plan => plan.tab_id !== tabId))
+
+      // Refresh from server to ensure consistency
+      await Promise.all([
+        loadDeviceTabs(),
+        loadPlans()
+      ])
+
+      // Switch active tab if needed
+      if (String(tabId) === String(activeTab)) {
+        const remainingTabs = deviceTabs.filter(tab => tab.id !== tabId)
+        if (remainingTabs.length > 0) {
+          setActiveTab(String(remainingTabs[0].id))
+        } else {
+          setActiveTab('')
+        }
+      }
+
     } catch (error) {
-      showMessage('error', error.message)
+      // Handle network or parsing errors
+      console.error('Delete tab error:', error)
+      
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        showMessage('error', 'Network error: Could not connect to server')
+      } else {
+        showMessage('error', error.message || 'An unexpected error occurred')
+      }
+
+      // Refresh data to stay synchronized
+      await Promise.all([
+        loadDeviceTabs(),
+        loadPlans()
+      ]).catch(refreshError => {
+        console.error('Failed to refresh after error:', refreshError)
+      })
     }
   }
 
-  const renameDeviceTab = async (oldTab, newTabName) => {
+  const renameDeviceTab = async (tabId, newTabName) => {
     if (!newTabName.trim()) {
       showMessage('error', 'Please enter a new tab name')
       return
@@ -322,11 +515,11 @@ export default function AdminDashboard() {
 
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/device-tabs/${oldTab}`, {
+      const res = await authFetch(`${apiUrl}/pricing/tabs/${tabId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ newTabName: newTabName.trim() })
+        body: JSON.stringify({ name: newTabName.trim() })
       })
 
       const data = await res.json()
@@ -334,8 +527,8 @@ export default function AdminDashboard() {
       if (!res.ok) throw new Error(data.error)
 
       showMessage('success', 'Device tab renamed successfully!')
-      loadDeviceTabs()
-      loadPlans()
+      await loadDeviceTabs()
+      await loadPlans()
     } catch (error) {
       showMessage('error', error.message)
     }
@@ -350,8 +543,7 @@ export default function AdminDashboard() {
 
     try {
       const apiUrl = getApiUrl()
-      const apiBase = getApiBase()
-      const res = await fetch(`${apiUrl}/upload/logo`, {
+      const res = await authFetch(`${apiUrl}/upload/logo`, {
         method: 'POST',
         credentials: 'include',
         body: formData
@@ -361,9 +553,9 @@ export default function AdminDashboard() {
       
       if (!res.ok) throw new Error(data.error)
 
-      const fullUrl = `${apiBase}${data.url}`
-      setLogoUrl(fullUrl)
-      showMessage('success', 'Logo uploaded successfully! Click Save Settings to apply.')
+      // Logo is now saved to database, just reload settings to get the correct URL
+      await loadSettings()
+      showMessage('success', 'Logo uploaded and saved successfully!')
     } catch (error) {
       showMessage('error', error.message)
     }
@@ -378,8 +570,7 @@ export default function AdminDashboard() {
 
     try {
       const apiUrl = getApiUrl()
-      const apiBase = getApiBase()
-      const res = await fetch(`${apiUrl}/upload/favicon`, {
+      const res = await authFetch(`${apiUrl}/upload/favicon`, {
         method: 'POST',
         credentials: 'include',
         body: formData
@@ -389,9 +580,9 @@ export default function AdminDashboard() {
       
       if (!res.ok) throw new Error(data.error)
 
-      const fullUrl = `${apiBase}${data.url}`
-      setFaviconUrl(fullUrl)
-      showMessage('success', 'Favicon uploaded successfully! Click Save Settings to apply.')
+      // Favicon is now saved to database, just reload settings to get the correct URL
+      await loadSettings()
+      showMessage('success', 'Favicon uploaded and saved successfully!')
     } catch (error) {
       showMessage('error', error.message)
     }
@@ -409,30 +600,18 @@ export default function AdminDashboard() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         const formData = new FormData()
-        formData.append('slider', file)
+        formData.append('image', file)
+        formData.append('section', section)
 
-        // Upload file
-        const uploadRes = await fetch(`${apiUrl}/upload/slider`, {
+        // Upload directly to slider-images endpoint
+        const uploadRes = await authFetch(`${apiUrl}/slider-images`, {
           method: 'POST',
           credentials: 'include',
           body: formData
         })
 
         const uploadData = await uploadRes.json()
-        if (!uploadRes.ok) throw new Error(uploadData.error)
-
-        const fullUrl = `${apiBase}${uploadData.url}`
-
-        // Add to slider_images table with section
-        const addRes = await fetch(`${apiUrl}/slider-images`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ image_url: fullUrl, section })
-        })
-
-        const addData = await addRes.json()
-        if (!addRes.ok) throw new Error(addData.error)
+        if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed')
       }
 
       showMessage('success', `${files.length} slider image(s) uploaded successfully!`)
@@ -448,7 +627,7 @@ export default function AdminDashboard() {
   const deleteSliderImage = async (id) => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/slider-images/${id}`, {
+      const res = await authFetch(`${apiUrl}/slider-images/${id}`, {
         method: 'DELETE',
         credentials: 'include'
       })
@@ -463,11 +642,31 @@ export default function AdminDashboard() {
     }
   }
 
+  const updateSection = async (sectionKey, heading, description) => {
+    try {
+      const apiUrl = getApiUrl()
+      const res = await authFetch(`${apiUrl}/sections/${sectionKey}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ heading, description })
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      showMessage('success', 'Section updated successfully')
+      await loadSections()
+    } catch (error) {
+      showMessage('error', error.message)
+    }
+  }
+
   const saveSettings = async () => {
     setSaving(true)
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/settings`, {
+      const res = await authFetch(`${apiUrl}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -507,11 +706,11 @@ export default function AdminDashboard() {
     setSaving(true)
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/account/update-email`, {
+      const res = await authFetch(`${apiUrl}/auth/change-email`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ newEmail, currentPassword: emailPassword })
+        body: JSON.stringify({ email: newEmail, password: emailPassword })
       })
 
       const data = await res.json()
@@ -523,6 +722,8 @@ export default function AdminDashboard() {
       showMessage('success', data.message + ' Logging out...')
       
       setTimeout(() => {
+        localStorage.removeItem('token')
+        localStorage.removeItem('admin')
         router.push('/admin/login')
       }, 2000)
     } catch (error) {
@@ -536,7 +737,7 @@ export default function AdminDashboard() {
     setSaving(true)
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/account/change-password`, {
+      const res = await authFetch(`${apiUrl}/auth/change-password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -563,7 +764,7 @@ export default function AdminDashboard() {
   const updatePlan = async (planId, updates) => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/${planId}`, {
+      const res = await authFetch(`${apiUrl}/pricing/plans/${planId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -586,12 +787,12 @@ export default function AdminDashboard() {
   const addPlan = async (deviceTab, planData) => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans`, {
+      const res = await authFetch(`${apiUrl}/pricing/plans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          device_tab: deviceTab,
+          tab_id: deviceTab,
           ...planData
         })
       })
@@ -611,45 +812,107 @@ export default function AdminDashboard() {
   }
 
   const deletePlan = async (planId, planName) => {
+    // Validate input parameters
+    if (!planId) {
+      showMessage('error', 'Invalid plan: Missing ID')
+      return
+    }
+
+    if (!planName) {
+      showMessage('error', 'Invalid plan: Missing name')
+      return
+    }
+
+    // Verify plan exists in current state
+    const planExists = plans.some(plan => plan.id === planId)
+    if (!planExists) {
+      showMessage('warning', 'Plan not found. Refreshing...')
+      await loadPlans()
+      return
+    }
+
+    // Show confirmation dialog
     setConfirmDialog({
       isOpen: true,
       type: 'plan',
       id: planId,
       name: planName,
-      action: confirmDeletePlan
+      action: () => confirmDeletePlan(planId, planName)
     })
   }
 
-  const confirmDeletePlan = async () => {
-    const planId = confirmDialog.id
-    
+  const confirmDeletePlan = async (planId, planName) => {
+    // Validate parameters
+    if (!planId) {
+      showMessage('error', 'Cannot delete plan: Invalid ID')
+      return
+    }
+
+    const apiUrl = getApiUrl()
+
     try {
-      const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/${planId}`, {
+      // Perform delete request
+      const response = await authFetch(`${apiUrl}/pricing/plans/${planId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       })
 
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error)
+      // Parse response
+      const data = await response.json()
+
+      // Handle response status
+      if (!response.ok) {
+        if (response.status === 404) {
+          showMessage('warning', 'Plan already deleted or not found')
+        } else if (response.status === 403) {
+          showMessage('error', 'Unauthorized to delete this plan')
+        } else {
+          showMessage('error', data.error || `Failed to delete plan (Error ${response.status})`)
+        }
+        
+        // Refresh to sync with server
+        await loadPlans()
+        return
       }
 
-      setPlans(plans.filter(p => p.id !== planId))
+      // Success - update UI
       showMessage('success', 'Plan deleted successfully!')
+
+      // Update local state immediately
+      setPlans(prev => prev.filter(plan => plan.id !== planId))
+
+      // Refresh from server to ensure consistency
+      await loadPlans()
+
     } catch (error) {
-      showMessage('error', error.message)
+      // Handle network or parsing errors
+      console.error('Delete plan error:', error)
+      
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        showMessage('error', 'Network error: Could not connect to server')
+      } else {
+        showMessage('error', error.message || 'An unexpected error occurred')
+      }
+
+      // Refresh to stay synchronized
+      await loadPlans().catch(refreshError => {
+        console.error('Failed to refresh after error:', refreshError)
+      })
     }
   }
 
   const loadFaqs = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/faqs`)
+      const res = await authFetch(`${apiUrl}/faqs`)
       const data = await res.json()
-      setFaqs(Array.isArray(data) ? data : [])
+      setFaqs(data.success && Array.isArray(data.faqs) ? data.faqs : [])
     } catch (e) {
       console.error('Failed to load FAQs:', e)
+      setFaqs([])
     }
   }
 
@@ -660,18 +923,19 @@ export default function AdminDashboard() {
     }
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/faqs`, {
+      const res = await authFetch(`${apiUrl}/faqs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ question: newFaqQ.trim(), answer: newFaqA.trim() })
       })
-      if (!res.ok) {
-        const data = await res.json()
+      const data = await res.json()
+      if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to add FAQ')
       }
-      const created = await res.json()
-      setFaqs(prev => [...prev, created].sort((a,b) => (a.display_order - b.display_order) || (a.id - b.id)))
+      if (data.faq) {
+        setFaqs(prev => [...prev, data.faq].sort((a,b) => (a.display_order - b.display_order) || (a.id - b.id)))
+      }
       setNewFaqQ('')
       setNewFaqA('')
       showMessage('success', 'FAQ added')
@@ -683,18 +947,19 @@ export default function AdminDashboard() {
   const updateFaq = async (id, updates) => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/faqs/${id}`, {
+      const res = await authFetch(`${apiUrl}/faqs/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(updates)
       })
-      if (!res.ok) {
-        const data = await res.json()
+      const data = await res.json()
+      if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to update FAQ')
       }
-      const updated = await res.json()
-      setFaqs(prev => prev.map(f => f.id === id ? updated : f))
+      if (data.faq) {
+        setFaqs(prev => prev.map(f => f.id === id ? data.faq : f))
+      }
       showMessage('success', 'FAQ updated')
     } catch (e) {
       showMessage('error', e.message)
@@ -711,7 +976,7 @@ export default function AdminDashboard() {
       action: async () => {
         try {
           const apiUrl = getApiUrl()
-          const res = await fetch(`${apiUrl}/faqs/${id}`, {
+          const res = await authFetch(`${apiUrl}/faqs/${id}`, {
             method: 'DELETE',
             credentials: 'include'
           })
@@ -732,10 +997,13 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => {
     const apiUrl = getApiUrl()
-    await fetch(`${apiUrl}/auth/logout`, {
+    await authFetch(`${apiUrl}/auth/logout`, {
       method: 'POST',
       credentials: 'include'
     })
+    // Clear stored tokens
+    localStorage.removeItem('token')
+    localStorage.removeItem('admin')
     router.push('/admin/login')
   }
 
@@ -744,9 +1012,10 @@ export default function AdminDashboard() {
     setTimeout(() => setMessage({ type: '', text: '' }), 5000)
   }
 
-  const filteredPlans = plans.filter(p => p.device_tab === activeTab)
+  const filteredPlans = plans.filter(p => String(p.tab_id) === String(activeTab))
 
-  if (loading) {
+  // Don't render anything until mounted (prevents SSR issues)
+  if (!mounted || loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a1a1a' }}>
         <p style={{ color: '#86ff00', fontSize: '20px' }}>Loading...</p>
@@ -760,6 +1029,7 @@ export default function AdminDashboard() {
     { id: 'analytics', icon: <FaChartLine />, label: 'Analytics' },
     { id: 'account', icon: <FaLock />, label: 'Account Settings' },
     { id: 'site', icon: <FaCog />, label: 'Site Settings' },
+    { id: 'content', icon: <FaEdit />, label: 'Content Settings' },
     { id: 'pricing', icon: <FaDollarSign />, label: 'Pricing Plans' },
     { id: 'faqs', icon: <FaQuestionCircle />, label: 'FAQs' },
     { id: 'blogs', icon: <FaBlog />, label: 'Blog Management', isLink: true, href: '/admin/blogs/manage' }
@@ -920,9 +1190,76 @@ export default function AdminDashboard() {
         flex: 1,
         marginLeft: sidebarOpen ? '280px' : '80px',
         transition: 'margin-left 0.3s ease',
-        padding: '40px 40px',
-        overflowY: 'auto'
+        padding: '120px 40px 40px 40px',
+        overflowY: 'auto',
+        position: 'relative'
       }}>
+        {/* Fixed Top Bar */}
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: sidebarOpen ? '280px' : '80px',
+          right: 0,
+          height: '80px',
+          background: 'rgba(0, 0, 0, 0.95)',
+          backdropFilter: 'blur(10px)',
+          borderBottom: '1px solid #2a2a2a',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 32px',
+          zIndex: 50,
+          transition: 'left 0.3s ease'
+        }}>
+          <button
+            onClick={saveSettings}
+            disabled={saving}
+            style={{
+              padding: '12px 24px',
+              background: saving ? '#555' : 'linear-gradient(135deg, #86ff00 0%, #9fff33 100%)',
+              color: '#000',
+              border: 'none',
+              borderRadius: '10px',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: '800',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.3s ease',
+              boxShadow: saving ? 'none' : '0 4px 12px rgba(134, 255, 0, 0.3)'
+            }}
+          >
+            <FaSave />
+            {saving ? 'Saving...' : 'Save Settings'}
+          </button>
+
+          <Link
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: '12px 24px',
+              background: 'linear-gradient(135deg, #86ff00 0%, #9fff33 100%)',
+              color: '#000',
+              border: 'none',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '800',
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.3s ease',
+              boxShadow: '0 4px 12px rgba(134, 255, 0, 0.3)'
+            }}
+          >
+            <FaDoorOpen />
+            View Website
+          </Link>
+        </div>
+
         {message.text && (
           <Alert 
             type={message.type === 'success' ? 'success' : 'error'} 
@@ -994,16 +1331,16 @@ export default function AdminDashboard() {
             setSiteDescription={setSiteDescription}
             copyrightText={copyrightText}
             setCopyrightText={setCopyrightText}
-            heroSliders={heroSliders}
-            streamingSliders={streamingSliders}
-            moviesSliders={moviesSliders}
-            sportsSliders={sportsSliders}
-            channelsSliders={channelsSliders}
-            handleSliderUpload={handleSliderUpload}
-            deleteSliderImage={deleteSliderImage}
-            uploadingSlider={uploadingSlider}
             saveSettings={saveSettings}
             saving={saving}
+          />
+        )}
+
+        {/* Content Settings Section */}
+        {activeSection === 'content' && (
+          <ContentSettingsSection
+            sections={sections}
+            updateSection={updateSection}
           />
         )}
 
@@ -1022,6 +1359,7 @@ export default function AdminDashboard() {
             updatePlan={updatePlan}
             addPlan={addPlan}
             deletePlan={deletePlan}
+            whatsappNumber={whatsappNumber}
           />
         )}
 
@@ -1041,6 +1379,18 @@ export default function AdminDashboard() {
           />
         )}
       </div>
+
+      {/* Global Confirm Dialog for Pricing Tabs and Plans */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen && (confirmDialog.type === 'tab' || confirmDialog.type === 'plan')}
+        onClose={() => setConfirmDialog({ isOpen: false, type: '', id: null, name: '', action: null })}
+        onConfirm={confirmDialog.action}
+        title={confirmDialog.type === 'tab' ? 'Delete Device Tab' : 'Delete Plan'}
+        message={`Are you sure you want to delete "${confirmDialog.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   )
 }
@@ -1399,135 +1749,10 @@ function AccountSection({ currentEmail, newEmail, setNewEmail, emailPassword, se
 }
 
 // Reusable Slider Gallery Component
-function SliderGallery({ title, description, section, sliders, handleUpload, deleteImage, isUploading }) {
-  return (
-    <div style={{ marginBottom: '32px', paddingTop: '24px', borderTop: '1px solid #2a2a2a' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <label style={{ color: '#ddd', fontSize: '15px', fontWeight: '600' }}>
-          {title} ({sliders.length})
-        </label>
-        <label
-          htmlFor={`slider-upload-${section}`}
-          style={{
-            padding: '10px 20px',
-            borderRadius: '8px',
-            border: 'none',
-            background: isUploading ? '#555' : '#86ff00',
-            color: '#000',
-            fontSize: '14px',
-            fontWeight: '700',
-            cursor: isUploading ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <FaPlus /> {isUploading ? 'Uploading...' : 'Add Images'}
-        </label>
-        <input
-          id={`slider-upload-${section}`}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => handleUpload(e, section)}
-          disabled={isUploading}
-          style={{ display: 'none' }}
-        />
-      </div>
-      <p style={{ color: '#888', fontSize: '13px', margin: '0 0 20px 0' }}>
-        {description}
-      </p>
-
-      {/* Slider Images Gallery */}
-      {sliders.length > 0 ? (
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
-          gap: '16px',
-          marginBottom: '16px'
-        }}>
-          {sliders.map((img, index) => (
-            <div 
-              key={img.id}
-              style={{ 
-                position: 'relative',
-                background: '#0f0f0f', 
-                borderRadius: '8px', 
-                border: '1px solid #3a3a3a',
-                overflow: 'hidden'
-              }}
-            >
-              <img 
-                src={img.image_url} 
-                alt={`${title} ${index + 1}`} 
-                style={{ 
-                  width: '100%', 
-                  height: '150px', 
-                  objectFit: 'cover',
-                  display: 'block'
-                }} 
-              />
-              <div style={{ 
-                position: 'absolute',
-                top: '8px',
-                left: '8px',
-                background: 'rgba(0, 0, 0, 0.7)',
-                color: '#86ff00',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: '700'
-              }}>
-                #{index + 1}
-              </div>
-              <div style={{ padding: '12px' }}>
-                <button
-                  onClick={() => deleteImage(img.id)}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '6px',
-                    border: '1px solid #8b1e1e',
-                    background: 'transparent',
-                    color: '#ff6666',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  <FaTrash /> Remove
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div style={{ 
-          padding: '40px', 
-          textAlign: 'center', 
-          background: '#0f0f0f', 
-          borderRadius: '8px',
-          border: '2px dashed #3a3a3a',
-          marginBottom: '16px'
-        }}>
-          <FaInfoCircle style={{ fontSize: '48px', color: '#555', marginBottom: '16px' }} />
-          <p style={{ color: '#888', margin: 0 }}>No slider images uploaded yet. Click "Add Images" to upload.</p>
-        </div>
-      )}
-
-      <p style={{ color: '#888', fontSize: '12px', margin: '0' }}>
-        Supported formats: JPEG, JPG, PNG, GIF, WebP, SVG, BMP (Max 10MB per image). Images will appear in the order shown above.
-      </p>
-    </div>
-  )
-}
-
 // Site Settings Section Component  
-function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, setWhatsappNumber, useLogoImage, setUseLogoImage, logoUrl, handleLogoUpload, logoWidth, setLogoWidth, logoText, setLogoText, faviconUrl, handleFaviconUpload, heroHeading, setHeroHeading, heroParagraph, setHeroParagraph, supportedDevicesParagraph, setSupportedDevicesParagraph, siteTitle, setSiteTitle, siteDescription, setSiteDescription, copyrightText, setCopyrightText, heroSliders, streamingSliders, moviesSliders, sportsSliders, channelsSliders, handleSliderUpload, deleteSliderImage, uploadingSlider, saveSettings, saving }) {
+function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, setWhatsappNumber, useLogoImage, setUseLogoImage, logoUrl, handleLogoUpload, logoWidth, setLogoWidth, logoText, setLogoText, faviconUrl, handleFaviconUpload, heroHeading, setHeroHeading, heroParagraph, setHeroParagraph, supportedDevicesParagraph, setSupportedDevicesParagraph, siteTitle, setSiteTitle, siteDescription, setSiteDescription, copyrightText, setCopyrightText, saveSettings, saving }) {
+  const apiBase = getApiBase()
+  
   return (
     <div>
       <h1 style={{ margin: '0 0 32px 0', color: '#fff', fontSize: '32px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1620,11 +1845,11 @@ function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, se
               </label>
               <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '20px' }}>
                 {logoUrl && (
-                  <img src={logoUrl} alt="Logo" style={{ height: '60px', width: 'auto', borderRadius: '8px', border: '1px solid #3a3a3a' }} />
+                  <img src={logoUrl.startsWith('http') ? logoUrl : `${apiBase}${logoUrl}`} alt="Logo" style={{ height: '60px', width: 'auto', borderRadius: '8px', border: '1px solid #3a3a3a' }} />
                 )}
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp,image/bmp,image/x-icon,image/tiff"
                   onChange={handleLogoUpload}
                   style={{ color: '#ddd', fontSize: '14px' }}
                 />
@@ -1691,11 +1916,11 @@ function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, se
           </p>
           <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '12px' }}>
             {faviconUrl && (
-              <img src={faviconUrl} alt="Favicon" style={{ height: '32px', width: '32px', borderRadius: '4px', border: '1px solid #3a3a3a' }} />
+              <img src={faviconUrl.startsWith('http') ? faviconUrl : `${apiBase}${faviconUrl}`} alt="Favicon" style={{ height: '32px', width: '32px', borderRadius: '4px', border: '1px solid #3a3a3a' }} />
             )}
             <input
               type="file"
-              accept="image/*"
+              accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp,image/bmp,image/x-icon,image/tiff,image/vnd.microsoft.icon"
               onChange={handleFaviconUpload}
               style={{ color: '#ddd', fontSize: '14px' }}
             />
@@ -1894,61 +2119,6 @@ function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, se
           />
         </div>
 
-        {/* Hero Slider */}
-        <SliderGallery
-          title="Hero Section Slider"
-          description="Upload images for the main hero section at the top of the homepage. These images will rotate automatically."
-          section="hero"
-          sliders={heroSliders}
-          handleUpload={handleSliderUpload}
-          deleteImage={deleteSliderImage}
-          isUploading={uploadingSlider === 'hero'}
-        />
-
-        {/* Streaming Services Slider */}
-        <SliderGallery
-          title="Streaming Services Slider"
-          description="Upload images showcasing streaming service logos and features. Displayed in the streaming services section."
-          section="streaming"
-          sliders={streamingSliders}
-          handleUpload={handleSliderUpload}
-          deleteImage={deleteSliderImage}
-          isUploading={uploadingSlider === 'streaming'}
-        />
-
-        {/* Movies & TV Shows Slider */}
-        <SliderGallery
-          title="Movies & TV Shows Slider"
-          description="Upload images of popular movies and TV shows available on your service. Displayed in the movies section."
-          section="movies"
-          sliders={moviesSliders}
-          handleUpload={handleSliderUpload}
-          deleteImage={deleteSliderImage}
-          isUploading={uploadingSlider === 'movies'}
-        />
-
-        {/* Sports Events Slider */}
-        <SliderGallery
-          title="Sports Events Slider"
-          description="Upload images of major sports events and leagues available. Displayed in the sports section."
-          section="sports"
-          sliders={sportsSliders}
-          handleUpload={handleSliderUpload}
-          deleteImage={deleteSliderImage}
-          isUploading={uploadingSlider === 'sports'}
-        />
-
-        {/* Channel Categories Slider */}
-        <SliderGallery
-          title="Channel Categories Slider"
-          description="Upload images of channel categories. Displayed in the Channel Categories section on the Channels page."
-          section="channels"
-          sliders={channelsSliders}
-          handleUpload={handleSliderUpload}
-          deleteImage={deleteSliderImage}
-          isUploading={uploadingSlider === 'channels'}
-        />
-
         <button
           onClick={saveSettings}
           disabled={saving}
@@ -1960,7 +2130,8 @@ function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, se
             color: '#000',
             fontSize: '16px',
             fontWeight: '800',
-            cursor: saving ? 'not-allowed' : 'pointer'
+            cursor: saving ? 'not-allowed' : 'pointer',
+            marginTop: '24px'
           }}
         >
           {saving ? 'Saving...' : 'Save Site Settings'}
@@ -1970,16 +2141,189 @@ function SiteSettingsSection({ contactEmail, setContactEmail, whatsappNumber, se
   )
 }
 
+// Content Settings Section Component
+function ContentSettingsSection({ sections, updateSection }) {
+  const [editingSections, setEditingSections] = useState({})
+
+  const handleSectionChange = (sectionKey, field, value) => {
+    setEditingSections(prev => ({
+      ...prev,
+      [sectionKey]: {
+        ...prev[sectionKey],
+        [field]: value
+      }
+    }))
+  }
+
+  const saveSectionChanges = async (sectionKey) => {
+    const edits = editingSections[sectionKey]
+    if (!edits) return
+
+    const section = sections.find(s => s.section_key === sectionKey)
+    if (!section) return
+
+    const heading = edits.heading !== undefined ? edits.heading : section.heading
+    const description = edits.description !== undefined ? edits.description : section.description
+
+    await updateSection(sectionKey, heading, description)
+    
+    // Clear editing state for this section
+    setEditingSections(prev => {
+      const updated = { ...prev }
+      delete updated[sectionKey]
+      return updated
+    })
+  }
+
+  return (
+    <div style={{
+      maxWidth: '1400px',
+      margin: '0 auto',
+      padding: '32px'
+    }}>
+      <div style={{
+        background: 'linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%)',
+        borderRadius: '16px',
+        padding: '40px',
+        border: '1px solid #2a2a2a'
+      }}>
+        <div style={{ marginBottom: '40px' }}>
+          <h2 style={{
+            fontSize: '28px',
+            fontWeight: '800',
+            color: '#86ff00',
+            marginBottom: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <FaEdit />
+            Content Settings
+          </h2>
+          <p style={{ color: '#888', fontSize: '15px', marginTop: '8px' }}>
+            Customize the headings and descriptions for each section displayed on your website.
+          </p>
+        </div>
+
+        {sections.map(section => {
+          const edits = editingSections[section.section_key] || {}
+          const heading = edits.heading !== undefined ? edits.heading : section.heading
+          const description = edits.description !== undefined ? edits.description : section.description
+          const hasChanges = edits.heading !== undefined || edits.description !== undefined
+
+          return (
+            <div key={section.section_key} style={{
+              marginBottom: '28px',
+              padding: '28px',
+              background: 'rgba(134, 255, 0, 0.02)',
+              borderRadius: '12px',
+              border: '1px solid #2a2a2a',
+              transition: 'all 0.3s'
+            }}>
+              <h3 style={{
+                fontSize: '16px',
+                fontWeight: '700',
+                color: '#86ff00',
+                marginBottom: '20px',
+                textTransform: 'capitalize'
+              }}>
+                {section.section_key} Section
+              </h3>
+              
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', color: '#ddd', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
+                  Heading
+                </label>
+                <input
+                  type="text"
+                  value={heading || ''}
+                  onChange={(e) => handleSectionChange(section.section_key, 'heading', e.target.value)}
+                  placeholder="Enter section heading"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #3a3a3a',
+                    background: '#1a1a1a',
+                    color: '#fff',
+                    fontSize: '14px',
+                    transition: 'border 0.2s'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#86ff00'}
+                  onBlur={(e) => e.target.style.borderColor = '#3a3a3a'}
+                />
+              </div>
+              
+              {section.section_key === 'devices' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', color: '#ddd', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
+                    Description
+                  </label>
+                  <textarea
+                    value={description || ''}
+                    onChange={(e) => handleSectionChange(section.section_key, 'description', e.target.value)}
+                    placeholder="Enter section description"
+                    rows="3"
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      border: '1px solid #3a3a3a',
+                      background: '#1a1a1a',
+                      color: '#fff',
+                      fontSize: '14px',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                      transition: 'border 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#86ff00'}
+                    onBlur={(e) => e.target.style.borderColor = '#3a3a3a'}
+                  />
+                </div>
+              )}
+              
+              {hasChanges && (
+                <button
+                  onClick={() => saveSectionChanges(section.section_key)}
+                  style={{
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#86ff00',
+                    color: '#000',
+                    fontSize: '14px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+                  onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                >
+                  <FaSave />
+                  Save Changes
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // Pricing Plans Section Component
-function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNewTabName, addDeviceTab, deleteDeviceTab, renameDeviceTab, filteredPlans, updatePlan, addPlan, deletePlan }) {
+function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNewTabName, addDeviceTab, deleteDeviceTab, renameDeviceTab, filteredPlans, updatePlan, addPlan, deletePlan, whatsappNumber }) {
   const [showAddTab, setShowAddTab] = useState(false)
   const [editingTab, setEditingTab] = useState(null)
   const [editTabName, setEditTabName] = useState('')
   const [showAddPlan, setShowAddPlan] = useState(false)
 
   const startEditingTab = (tab) => {
-    setEditingTab(tab)
-    setEditTabName(tab)
+    setEditingTab(tab.id)
+    setEditTabName(tab.name)
   }
 
   const saveTabRename = async () => {
@@ -2090,7 +2434,7 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
           <div style={{ display: 'grid', gap: '12px' }}>
             {deviceTabs.map(tab => (
               <div
-                key={tab}
+                key={tab.id}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -2101,7 +2445,7 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
                   borderRadius: '8px'
                 }}
               >
-                {editingTab === tab ? (
+                {editingTab === tab.id ? (
                   <>
                     <input
                       type="text"
@@ -2154,7 +2498,7 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
                 ) : (
                   <>
                     <span style={{ flex: 1, color: '#fff', fontSize: '14px', fontWeight: '600' }}>
-                      {tab}
+                      {tab.name} <span style={{ color: '#666', fontSize: '11px' }}>(ID: {tab.id})</span>
                     </span>
                     <button
                       onClick={() => startEditingTab(tab)}
@@ -2175,7 +2519,7 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
                       <FaEdit /> Edit
                     </button>
                     <button
-                      onClick={() => deleteDeviceTab(tab)}
+                      onClick={() => deleteDeviceTab(tab.id, tab.name)}
                       style={{
                         padding: '6px 14px',
                         borderRadius: '6px',
@@ -2213,21 +2557,21 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             {deviceTabs.map(tab => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={tab.id}
+                onClick={() => setActiveTab(String(tab.id))}
                 style={{
                   padding: '12px 24px',
                   borderRadius: '10px 10px 0 0',
                   border: 'none',
-                  background: activeTab === tab ? '#86ff00' : '#2a2a2a',
-                  color: activeTab === tab ? '#000' : '#fff',
+                  background: String(activeTab) === String(tab.id) ? '#86ff00' : '#2a2a2a',
+                  color: String(activeTab) === String(tab.id) ? '#000' : '#fff',
                   fontSize: '15px',
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.2s'
                 }}
               >
-                {tab}
+                {tab.name}
               </button>
             ))}
           </div>
@@ -2258,7 +2602,8 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
         {showAddPlan && (
           <AddPlanForm 
             onAdd={handleAddPlan} 
-            onCancel={() => setShowAddPlan(false)} 
+            onCancel={() => setShowAddPlan(false)}
+            whatsappNumber={whatsappNumber}
           />
         )}
 
@@ -2266,15 +2611,15 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
         <div style={{ display: 'grid', gap: '20px' }}>
           {filteredPlans.length > 0 ? (
             filteredPlans.map(plan => (
-              <PlanCard key={plan.id} plan={plan} onUpdate={updatePlan} onDelete={deletePlan} />
+              <PlanCard key={plan.id} plan={plan} onUpdate={updatePlan} onDelete={deletePlan} whatsappNumber={whatsappNumber} />
             ))
           ) : (
             <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
               <p style={{ margin: 0, fontSize: '16px' }}>
-                No plans found for "{activeTab}".
+                No plans found for this tab.
               </p>
               <p style={{ margin: '10px 0 0 0', fontSize: '14px' }}>
-                Click "Add New Plan" to create a plan for this tab.
+                Click "Add New Plan" above to create your first pricing plan.
               </p>
             </div>
           )}
@@ -2285,11 +2630,12 @@ function PricingSection({ activeTab, setActiveTab, deviceTabs, newTabName, setNe
 }
 
 // Add Plan Form Component
-function AddPlanForm({ onAdd, onCancel }) {
+function AddPlanForm({ onAdd, onCancel, whatsappNumber }) {
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
   const [features, setFeatures] = useState('')
   const [featured, setFeatured] = useState(false)
+  const [badgeText, setBadgeText] = useState('')
   const [buyLink, setBuyLink] = useState('')
   const [useWhatsApp, setUseWhatsApp] = useState(false)
 
@@ -2308,12 +2654,14 @@ function AddPlanForm({ onAdd, onCancel }) {
       .filter(Boolean)
 
     onAdd({
-      name: name.trim(),
+      title: name.trim(),
       price: price.trim(),
       features: featureLines,
-      is_featured: featured,
-      buy_link: buyLink.trim() || null,
-      use_whatsapp: useWhatsApp,
+      show_badge: featured,
+      badge_text: badgeText.trim() || 'Popular',
+      checkout_type: useWhatsApp ? 'whatsapp' : 'link',
+      checkout_link: buyLink.trim() || null,
+      whatsapp_number: useWhatsApp ? whatsappNumber : null,
       display_order: 0
     })
 
@@ -2322,6 +2670,7 @@ function AddPlanForm({ onAdd, onCancel }) {
     setPrice('')
     setFeatures('')
     setFeatured(false)
+    setBadgeText('')
     setBuyLink('')
     setUseWhatsApp(false)
   }
@@ -2379,17 +2728,45 @@ function AddPlanForm({ onAdd, onCancel }) {
             }}
           />
         </div>
-        <div>
-          <label style={{ display: 'block', color: '#ddd', marginBottom: '8px', fontSize: '13px', fontWeight: '600' }}>
-            Show "Popular" Badge
-          </label>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#ddd', marginBottom: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={featured}
             onChange={(e) => setFeatured(e.target.checked)}
-            style={{ width: '24px', height: '24px', marginTop: '12px', cursor: 'pointer' }}
+            style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#86ff00' }}
           />
-        </div>
+          Show Badge on this plan
+        </label>
+        
+        {featured && (
+          <div style={{ marginTop: '12px', paddingLeft: '30px' }}>
+            <label style={{ display: 'block', color: '#ddd', marginBottom: '8px', fontSize: '13px', fontWeight: '600' }}>
+              Badge Text (leave empty for default "Popular")
+            </label>
+            <input
+              type="text"
+              value={badgeText}
+              onChange={(e) => setBadgeText(e.target.value)}
+              placeholder="Popular"
+              style={{
+                width: '100%',
+                maxWidth: '300px',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid #3a3a3a',
+                background: '#1a1a1a',
+                color: '#fff',
+                fontSize: '14px'
+              }}
+            />
+            <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#888' }}>
+              Examples: "Most Popular", "Best Value", "Recommended", "Best Deal"
+            </p>
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: '20px' }}>
@@ -2493,14 +2870,15 @@ function AddPlanForm({ onAdd, onCancel }) {
 }
 
 // Plan Card Component
-function PlanCard({ plan, onUpdate, onDelete }) {
+function PlanCard({ plan, onUpdate, onDelete, whatsappNumber }) {
   const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(plan.name)
+  const [name, setName] = useState(plan.title || plan.name || '')
   const [price, setPrice] = useState(plan.price)
-  const [featured, setFeatured] = useState(plan.is_featured)
-  const [features, setFeatures] = useState(plan.features.join('\n'))
-  const [buyLink, setBuyLink] = useState(plan.buy_link || '')
-  const [useWhatsApp, setUseWhatsApp] = useState(plan.use_whatsapp || false)
+  const [featured, setFeatured] = useState(plan.show_badge || plan.is_popular || plan.is_featured || false)
+  const [badgeText, setBadgeText] = useState(plan.badge_text || '')
+  const [features, setFeatures] = useState((plan.features || []).join('\n'))
+  const [buyLink, setBuyLink] = useState(plan.checkout_link || plan.buy_link || '')
+  const [useWhatsApp, setUseWhatsApp] = useState(plan.checkout_type === 'whatsapp' || plan.use_whatsapp || false)
 
   const handleSave = () => {
     // Split by newlines and clean up each feature
@@ -2510,23 +2888,26 @@ function PlanCard({ plan, onUpdate, onDelete }) {
       .filter(Boolean) // Remove empty lines
     
     onUpdate(plan.id, {
-      name,
+      title: name,
       price,
-      is_featured: featured,
+      show_badge: featured,
+      badge_text: badgeText.trim() || 'Popular',
       features: featureLines,
-      buy_link: buyLink || null,
-      use_whatsapp: useWhatsApp
+      checkout_type: useWhatsApp ? 'whatsapp' : 'link',
+      checkout_link: buyLink || null,
+      whatsapp_number: useWhatsApp ? whatsappNumber : null
     })
     setEditing(false)
   }
 
   const handleCancel = () => {
-    setName(plan.name)
+    setName(plan.title || plan.name || '')
     setPrice(plan.price)
-    setFeatured(plan.is_featured)
-    setFeatures(plan.features.join('\n'))
-    setBuyLink(plan.buy_link || '')
-    setUseWhatsApp(plan.use_whatsapp || false)
+    setFeatured(plan.show_badge || plan.is_popular || plan.is_featured || false)
+    setBadgeText(plan.badge_text || '')
+    setFeatures((plan.features || []).join('\n'))
+    setBuyLink(plan.checkout_link || plan.buy_link || '')
+    setUseWhatsApp(plan.checkout_type === 'whatsapp' || plan.use_whatsapp || false)
     setEditing(false)
   }
 
@@ -2539,7 +2920,7 @@ function PlanCard({ plan, onUpdate, onDelete }) {
     }}>
       {editing ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '20px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
             <div>
               <label style={{ display: 'block', color: '#ddd', marginBottom: '8px', fontSize: '13px', fontWeight: '600' }}>Name</label>
               <input
@@ -2574,17 +2955,45 @@ function PlanCard({ plan, onUpdate, onDelete }) {
                 }}
               />
             </div>
-            <div>
-              <label style={{ display: 'block', color: '#ddd', marginBottom: '8px', fontSize: '13px', fontWeight: '600' }}>
-                Show "Popular" Badge
-              </label>
+          </div>
+          
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#ddd', marginBottom: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={featured}
                 onChange={(e) => setFeatured(e.target.checked)}
-                style={{ width: '24px', height: '24px', marginTop: '12px', cursor: 'pointer' }}
+                style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#86ff00' }}
               />
-            </div>
+              Show Badge on this plan
+            </label>
+            
+            {featured && (
+              <div style={{ marginTop: '12px', paddingLeft: '30px' }}>
+                <label style={{ display: 'block', color: '#ddd', marginBottom: '8px', fontSize: '13px', fontWeight: '600' }}>
+                  Badge Text (leave empty for default "Popular")
+                </label>
+                <input
+                  type="text"
+                  value={badgeText}
+                  onChange={(e) => setBadgeText(e.target.value)}
+                  placeholder="Popular"
+                  style={{
+                    width: '100%',
+                    maxWidth: '300px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #3a3a3a',
+                    background: '#1a1a1a',
+                    color: '#fff',
+                    fontSize: '14px'
+                  }}
+                />
+                <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#888' }}>
+                  Examples: "Most Popular", "Best Value", "Recommended", "Best Deal"
+                </p>
+              </div>
+            )}
           </div>
           
           <div style={{ marginBottom: '20px' }}>
@@ -2684,8 +3093,8 @@ function PlanCard({ plan, onUpdate, onDelete }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <h3 style={{ margin: '0 0 10px 0', color: '#fff', fontSize: '20px', fontWeight: '700' }}>
-                {plan.name}
-                {plan.is_featured && (
+                {plan.title || plan.name}
+                {(plan.show_badge || plan.is_popular || plan.is_featured) && (
                   <span style={{
                     marginLeft: '12px',
                     padding: '4px 10px',
@@ -2697,23 +3106,23 @@ function PlanCard({ plan, onUpdate, onDelete }) {
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px'
                   }}>
-                    POPULAR
+                    {plan.badge_text || 'POPULAR'}
                   </span>
                 )}
               </h3>
               <p style={{ margin: '0 0 16px 0', color: '#86ff00', fontSize: '28px', fontWeight: '900' }}>
                 {plan.price}
               </p>
-              {plan.buy_link && (
+              {(plan.checkout_link || plan.buy_link) && (
                 <p style={{ margin: '0 0 16px 0', color: '#888', fontSize: '13px' }}>
                   <strong style={{ color: '#aaa' }}>Link:</strong>{' '}
                   <a 
-                    href={plan.buy_link} 
+                    href={plan.checkout_link || plan.buy_link} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     style={{ color: '#86ff00', textDecoration: 'none', wordBreak: 'break-all' }}
                   >
-                    {plan.buy_link.length > 60 ? plan.buy_link.substring(0, 60) + '...' : plan.buy_link}
+                    {(plan.checkout_link || plan.buy_link).length > 60 ? (plan.checkout_link || plan.buy_link).substring(0, 60) + '...' : (plan.checkout_link || plan.buy_link)}
                   </a>
                 </p>
               )}
@@ -2740,7 +3149,7 @@ function PlanCard({ plan, onUpdate, onDelete }) {
                 Edit
               </button>
               <button
-                onClick={() => onDelete(plan.id, plan.name)}
+                onClick={() => onDelete(plan.id, plan.title || plan.name)}
                 style={{
                   padding: '10px 20px',
                   borderRadius: '8px',

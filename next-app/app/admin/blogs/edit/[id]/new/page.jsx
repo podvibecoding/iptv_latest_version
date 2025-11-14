@@ -2,9 +2,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { getApiUrl } from '../../../../../lib/config'
-import BlogEditor from '../../../../../components/BlogEditor'
-import Toast from '../../../../../components/Toast'
+import { getApiUrl } from '@/lib/config'
+import BlogEditor from '@/components/BlogEditor'
+import Toast from '@/components/Toast'
 
 export default function EditBlogPage() {
   const router = useRouter()
@@ -35,21 +35,44 @@ export default function EditBlogPage() {
 
   const checkAuth = async () => {
     try {
+      // Check if we're in browser environment
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      // Check if token exists in localStorage
+      const token = localStorage.getItem('token')
+      if (!token) {
+        router.push('/admin/login')
+        return
+      }
+
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/auth/check`, {
-        credentials: 'include'
+      const res = await fetch(`${apiUrl}/auth/me`, {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       })
-      const data = await res.json()
       
-      if (!data.authenticated) {
+      if (!res.ok) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('admin')
         router.push('/admin/login')
         return
       }
       
+      const data = await res.json()
       setAuthenticated(true)
     } catch (error) {
       console.error('Auth check failed:', error)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token')
+        localStorage.removeItem('admin')
+      }
       router.push('/admin/login')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -57,9 +80,13 @@ export default function EditBlogPage() {
     try {
       setLoading(true)
       const apiUrl = getApiUrl()
+      const token = localStorage.getItem('token')
       
-      const res = await fetch(`${apiUrl}/admin/blogs/${params.id}`, {
-        credentials: 'include'
+      const res = await fetch(`${apiUrl}/blogs/admin/${params.id}`, {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       })
 
       if (res.status === 401) {
@@ -76,6 +103,7 @@ export default function EditBlogPage() {
       if (!res.ok) throw new Error('Failed to fetch blog')
 
       const data = await res.json()
+      
       setFormData({
         title: data.title || '',
         content: data.content || '',
@@ -106,42 +134,30 @@ export default function EditBlogPage() {
     const file = e.target.files[0]
     if (!file) return
 
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-    if (!validTypes.includes(file.type)) {
-      setToast({ message: 'Please upload a valid image file (JPEG, PNG, GIF, or WebP)', type: 'warning' })
-      return
-    }
-
-    // Validate file size (10MB max)
-    const maxSize = 10 * 1024 * 1024
-    if (file.size > maxSize) {
-      setToast({ message: 'Image size must be less than 10MB', type: 'warning' })
-      return
-    }
+    const formData = new FormData()
+    formData.append('image', file)
+    formData.append('blog_id', params.id)
 
     try {
       setUploadingImage(true)
       const apiUrl = getApiUrl()
-      const formDataUpload = new FormData()
-      formDataUpload.append('image', file)
-
+      const token = localStorage.getItem('token')
+      
       const res = await fetch(`${apiUrl}/upload/blog-image`, {
         method: 'POST',
         credentials: 'include',
-        body: formDataUpload
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
       })
 
       const data = await res.json()
+      
+      if (!res.ok) throw new Error(data.error)
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || data.message || 'Failed to upload image')
-      }
-
-      // Backend now returns full absolute URL
-      const imageUrl = data.url
-      console.log('Featured image uploaded:', imageUrl)
-      setFormData(prev => ({ ...prev, featured_image: imageUrl }))
+      // Set the image URL directly (already full URL from backend)
+      setFormData(prev => ({ ...prev, featured_image: data.url }))
       setToast({ message: 'Featured image uploaded successfully!', type: 'success' })
     } catch (error) {
       console.error('Error uploading image:', error)
@@ -162,11 +178,13 @@ export default function EditBlogPage() {
     try {
       setSaving(true)
       const apiUrl = getApiUrl()
+      const token = localStorage.getItem('token')
       
-      const res = await fetch(`${apiUrl}/admin/blogs/${params.id}`, {
+      const res = await fetch(`${apiUrl}/blogs/${params.id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         credentials: 'include',
         body: JSON.stringify(formData)
@@ -339,18 +357,12 @@ export default function EditBlogPage() {
                       disabled={uploadingImage}
                     />
                     <span className="btn btn-upload">
-                      {uploadingImage ? 'Uploading...' : 'Upload Image'}
+                      {uploadingImage ? 'Uploading...' : 'Upload Featured Image'}
                     </span>
                   </label>
-                  <small>Or enter image URL:</small>
-                  <input
-                    type="url"
-                    name="featured_image"
-                    value={formData.featured_image}
-                    onChange={handleChange}
-                    placeholder="https://example.com/image.jpg"
-                    style={{ marginTop: '8px' }}
-                  />
+                  <small style={{ color: '#888', fontSize: '0.875rem', marginTop: '0.5rem', display: 'block' }}>
+                    Upload from your computer (JPEG, PNG, GIF, WebP, SVG)
+                  </small>
                 </div>
                 {formData.featured_image && (
                   <div className="image-preview">

@@ -1,5 +1,6 @@
 'use client'
 import React, { useEffect, useRef, useState } from 'react'
+import { getApiUrl } from '../lib/config'
 
 function useCountUp(target, duration = 1800) {
   const [value, setValue] = useState(0)
@@ -22,17 +23,53 @@ function useCountUp(target, duration = 1800) {
   return value
 }
 
+function StatItem({ stat, started }) {
+  const value = started ? parseInt(stat.stat_value) : 0
+  const animatedValue = useCountUp(value, 1800)
+  
+  return (
+    <div className="stat-item">
+      <h2><span data-stat={stat.stat_key}>{animatedValue}K</span></h2>
+      <p>{stat.stat_label}</p>
+    </div>
+  )
+}
+
 export default function Stats() {
   const ref = useRef(null)
   const [started, setStarted] = useState(false)
-  const [values, setValues] = useState({ happy: 0, channels: 0, sport: 0, movies: 0 })
+  const [stats, setStats] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const apiUrl = getApiUrl()
+        const res = await fetch(`${apiUrl}/stats?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
+        if (!res.ok) throw new Error('Failed to fetch stats')
+        const data = await res.json()
+        setStats(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error('Failed to load stats:', e.message)
+        setStats([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadStats()
+  }, [])
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting && !started) {
           setStarted(true)
-          setValues({ happy: 7, channels: 40, sport: 15, movies: 54 })
         }
       })
     }, { threshold: 0.4 })
@@ -41,31 +78,25 @@ export default function Stats() {
     return () => observer.disconnect()
   }, [started])
 
-  const happy = useCountUp(values.happy, 1800)
-  const channels = useCountUp(values.channels, 1800)
-  const sport = useCountUp(values.sport, 1800)
-  const movies = useCountUp(values.movies, 1800)
+  if (loading) {
+    return (
+      <section className="stats" ref={ref}>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+          Loading statistics...
+        </div>
+      </section>
+    )
+  }
 
-  const toK = (v) => `${v}K`
+  if (stats.length === 0) {
+    return null // Don't show section if no stats
+  }
 
   return (
     <section className="stats" ref={ref}>
-      <div className="stat-item">
-        <h2><span data-stat="happy-customers">{toK(happy)}</span></h2>
-        <p>Happy Customers</p>
-      </div>
-      <div className="stat-item">
-        <h2><span data-stat="channels">{toK(channels)}</span></h2>
-        <p>Channels</p>
-      </div>
-      <div className="stat-item">
-        <h2><span data-stat="sport-channels">{toK(sport)}</span></h2>
-        <p>Sport Channels</p>
-      </div>
-      <div className="stat-item">
-        <h2><span data-stat="movies-shows">{toK(movies)}</span></h2>
-        <p>Movies & TV Shows</p>
-      </div>
+      {stats.map((stat) => (
+        <StatItem key={stat.id} stat={stat} started={started} />
+      ))}
     </section>
   )
 }

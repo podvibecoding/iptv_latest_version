@@ -10,19 +10,30 @@ export default function GoogleAnalytics() {
     const loadGAId = async () => {
       try {
         const apiUrl = getApiUrl()
+        
+        // Add timeout to prevent hanging
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
+        
         const res = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache'
-          }
+          },
+          signal: controller.signal
         })
+        
+        clearTimeout(timeoutId)
+        
+        if (!res.ok) return
+        
         const data = await res.json()
         if (data.google_analytics_measurement_id) {
           setGaId(data.google_analytics_measurement_id)
         }
       } catch (error) {
-        console.error('Failed to load GA ID:', error)
+        // Silently fail - backend API may not be accessible
       }
     }
     loadGAId()

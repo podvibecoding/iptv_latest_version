@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { getApiUrl } from '../lib/config'
+import { getApiUrl, getApiBase } from '../lib/config'
 import devicesImg from '../../public/images/devices.webp'
 import tvImg from '../../public/images/tv-1024x636-1-1.webp'
 
@@ -21,21 +21,43 @@ export default function Hero({ settings }){
     const loadSliderImages = async () => {
       try {
         const apiUrl = getApiUrl()
-        // Add timestamp to prevent caching
+        const apiBase = getApiBase()
         const timestamp = new Date().getTime()
+        
+        // Add timeout to prevent hanging
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
+        
         const res = await fetch(`${apiUrl}/slider-images?section=hero&_t=${timestamp}`, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
             'Expires': '0'
-          }
+          },
+          signal: controller.signal
         })
+        
+        clearTimeout(timeoutId)
+        
+        if (!res.ok) {
+          setSliderImages([])
+          setCacheBuster(Date.now())
+          return
+        }
+        
         const data = await res.json()
-        setSliderImages(data || [])
+        // Convert relative paths to absolute URLs
+        const imagesWithFullUrls = data.map(img => ({
+          ...img,
+          image_url: img.image_url.startsWith('http') ? img.image_url : `${apiBase}${img.image_url}`
+        }))
+        setSliderImages(imagesWithFullUrls || [])
         setCacheBuster(Date.now())
       } catch (error) {
-        console.error('Failed to load hero slider images:', error)
+        // Silently fail - backend API may not be accessible
+        setSliderImages([])
+        setCacheBuster(Date.now())
       } finally {
         setLoading(false)
         // Notify that component is loaded

@@ -1,27 +1,7 @@
-# Dependencies
 node_modules/
-
-# Environment variables
-.env
-
-# Uploads
 uploads/*
 !uploads/.gitkeep
-
-# Logs
+.env
 *.log
-npm-debug.log*
-
-# OS files
 .DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Production
-dist/
-build/
+*.sql.gz

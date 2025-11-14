@@ -8,25 +8,40 @@ export default function FaviconUpdater() {
     const updateFavicon = async () => {
       try {
         const apiUrl = getApiUrl()
+        
+        // Add timeout to prevent hanging
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+        
         const response = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache'
-          }
+          },
+          signal: controller.signal
         })
         
+        clearTimeout(timeoutId)
+        
         if (!response.ok) {
-          console.warn('Failed to fetch favicon settings')
+          // Silently fail - backend may not be accessible yet
           return
         }
         
         const settings = await response.json()
         
         if (settings.favicon_url) {
+          // Add API base URL if path is relative
+          let faviconPath = settings.favicon_url
+          if (!faviconPath.startsWith('http')) {
+            const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'
+            faviconPath = `${apiBase}${faviconPath}`
+          }
+          
           // Add cache buster to force browser refresh
           const cacheBuster = `?v=${Date.now()}`
-          const faviconUrl = settings.favicon_url + cacheBuster
+          const faviconUrl = faviconPath + cacheBuster
           
           // Update all favicon link elements
           const faviconLinks = document.querySelectorAll("link[rel*='icon']")
@@ -58,7 +73,8 @@ export default function FaviconUpdater() {
           }
         }
       } catch (error) {
-        console.error('Failed to load favicon:', error)
+        // Silently fail - this is expected if backend API is not accessible
+        // Error will be visible in other components that need the API
       }
     }
     

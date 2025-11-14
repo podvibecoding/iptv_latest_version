@@ -2,236 +2,167 @@
 import React, { useState, useEffect } from 'react'
 import { getApiUrl } from '../lib/config'
 
-// Helper function to ensure URL has protocol
-const ensureAbsoluteUrl = (url) => {
-  if (!url) return null
-  
-  // Remove any leading/trailing whitespace
-  url = url.trim()
-  
-  // If URL already has protocol, return as-is
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url
-  }
-  
-  // If URL starts with www., add https://
-  if (url.startsWith('www.')) {
-    return `https://${url}`
-  }
-  
-  // Otherwise, assume it needs https://
-  return `https://${url}`
-}
-
-// Fallback static plans in case API fails
-const FALLBACK_PLANS = {
-  '1': [
-    { label: '1 Month', price: '$10.99', features: [] },
-    { label: '3 Months', price: '$24.99', features: [] },
-    { label: '6 Months', price: '$39.99', featured: true, features: [] },
-    { label: '12 Months', price: '$59.99', features: [] },
-  ],
-  '2': [
-    { label: '1 Month', price: '$18.99', features: [] },
-    { label: '3 Months', price: '$44.99', features: [] },
-    { label: '6 Months', price: '$69.99', featured: true, features: [] },
-    { label: '12 Months', price: '$109.99', features: [] },
-  ],
-  '3': [
-    { label: '1 Month', price: '$24.99', features: [] },
-    { label: '3 Months', price: '$64.99', features: [] },
-    { label: '6 Months', price: '$109.99', featured: true, features: [] },
-    { label: '12 Months', price: '$179.99', features: [] },
-  ],
-  '6': [
-    { label: '1 Month', price: '$59.99', features: [] },
-    { label: '3 Months', price: '$129.99', features: [] },
-    { label: '6 Months', price: '$219.99', featured: true, features: [] },
-    { label: '12 Months', price: '$349.99', features: [] },
-  ],
-}
-
 export default function Pricing() {
-  const [devices, setDevices] = useState('1 Device')
-  const [plans, setPlans] = useState([])
-  const [deviceTabs, setDeviceTabs] = useState([])
+  const [activeTab, setActiveTab] = useState(null)
+  const [pricingData, setPricingData] = useState({ tabs: [] })
   const [loading, setLoading] = useState(true)
-  const [whatsappNumber, setWhatsappNumber] = useState('')
+  const [heading, setHeading] = useState('Choose Your IPTV Plan')
 
   useEffect(() => {
-    loadDeviceTabs()
-    loadPlans()
-    loadWhatsAppNumber()
+    loadPricingData()
+    loadHeading()
   }, [])
 
-  const loadDeviceTabs = async () => {
+  const loadHeading = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans/device-tabs?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      })
-      if (!res.ok) throw new Error('Failed to fetch tabs')
-      const data = await res.json()
-      setDeviceTabs(data)
-      if (data.length > 0) {
-        setDevices(data[0]) // Set first tab as default
+      const res = await fetch(`${apiUrl}/sections/pricing`, { cache: 'no-store' })
+      if (res.ok) {
+        const data = await res.json()
+        setHeading(data.heading || 'Choose Your IPTV Plan')
       }
     } catch (error) {
-      console.error('Failed to load device tabs:', error)
-      // Fallback to default tabs
-      setDeviceTabs(['1', '2', '3', '6'])
-      setDevices('1')
+      console.error('Failed to load heading:', error)
     }
   }
 
-  const loadPlans = async () => {
+  const loadPricingData = async () => {
     try {
       const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/plans?t=${Date.now()}`, {
+      const res = await fetch(`${apiUrl}/pricing?t=${Date.now()}`, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache'
         }
       })
-      if (!res.ok) throw new Error('Failed to fetch')
+      
+      if (!res.ok) throw new Error('Failed to fetch pricing data')
+      
       const data = await res.json()
-      setPlans(data)
+      
+      if (data.success && data.tabs && data.tabs.length > 0) {
+        setPricingData(data)
+        setActiveTab(data.tabs[0].id)
+      }
     } catch (error) {
-      console.error('Failed to load plans:', error)
-      // Use fallback plans
-      const fallbackArray = Object.entries(FALLBACK_PLANS).flatMap(([deviceTab, devicePlans]) =>
-        devicePlans.map(p => ({ ...p, device_tab: deviceTab }))
-      )
-      setPlans(fallbackArray)
+      console.error('Failed to load pricing:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const loadWhatsAppNumber = async () => {
-    try {
-      const apiUrl = getApiUrl()
-      const res = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      })
-      if (!res.ok) throw new Error('Failed to fetch settings')
-      const data = await res.json()
-      setWhatsappNumber(data.whatsapp_number || '')
-    } catch (error) {
-      console.error('Failed to load WhatsApp number:', error)
+  const ensureAbsoluteUrl = (url) => {
+    if (!url) return '#'
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url
+    }
+    return `https://${url}`
+  }
+
+  const handleCheckout = (plan, tabName) => {
+    if (plan.checkout_type === 'whatsapp' && plan.whatsapp_number) {
+      const message = `Hi, I'm interested in the "${plan.title}" for "${tabName}"`
+      const whatsappNumber = plan.whatsapp_number.replace(/\D/g, '')
+      const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`
+      window.open(url, '_blank')
+    } else if (plan.checkout_link) {
+      window.open(ensureAbsoluteUrl(plan.checkout_link), '_blank')
     }
   }
 
-  const getPlansForDevice = (deviceTab) => {
-    const filtered = plans.filter(p => p.device_tab === deviceTab)
-    if (filtered.length === 0) return FALLBACK_PLANS[deviceTab] || []
-
-    // Sort, then de-duplicate by normalized name (defensive against DB duplicates)
-    const sorted = filtered.sort((a, b) => (a.display_order || 0) - (b.display_order || 0) || a.id - b.id)
-    const seen = new Set()
-    const unique = []
-    for (const p of sorted) {
-      const key = (p.name || '').trim().toLowerCase()
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(p)
-      }
-    }
-
-    return unique.map(p => ({
-      label: p.name,
-      price: p.price,
-      featured: p.is_featured,
-      features: p.features || [],
-      buy_link: p.buy_link || null,
-      use_whatsapp: p.use_whatsapp || false
-    }))
+  if (loading) {
+    return (
+      <section className="pricing">
+        <p>Loading pricing plans...</p>
+      </section>
+    )
   }
 
-  const currentPlans = getPlansForDevice(devices)
+  const currentTab = pricingData.tabs.find(tab => tab.id === activeTab)
 
   return (
-    <section className="pricing" id="pricing">
-      <h2>Choose Your <span className="accent">IPTV Plan</span></h2>
+    <section className="pricing">
+      <h2>{heading}</h2>
 
+      {/* Tabs */}
       <div className="pricing-tabs">
-        {deviceTabs.map((tab) => (
+        {pricingData.tabs.map((tab) => (
           <button
-            key={tab}
-            className={`tab-button ${devices === tab ? 'active' : ''}`}
-            onClick={() => setDevices(tab)}
-            aria-pressed={devices === tab}
-            aria-label={tab}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
           >
-            {tab}
+            {tab.name}
           </button>
         ))}
       </div>
 
-      <div className="pricing-cards">
-        {currentPlans.map((plan, idx) => (
-          <article key={`${plan.label}-${idx}`} className={`pricing-card ${plan.featured ? 'featured' : ''}`}>
-            <h3>{plan.label}</h3>
-            <div className="price">{plan.price}</div>
-            <div className="device-count">{devices}</div>
-            <ul className="features">
-              {plan.features && plan.features.length > 0 ? (
-                plan.features.map((feature, i) => (
-                  <li key={i}>{feature}</li>
-                ))
-              ) : (
-                <>
-                  <li>SD / HD / FHD / 4K Streams</li>
-                  <li>40,000+ Live Channels</li>
-                  <li>54,000+ VOD</li>
-                  <li>VIP & Premium Channels</li>
-                  <li>Anti-buffering Technology</li>
-                  <li>24/7 Support</li>
-                </>
-              )}
-            </ul>
-            {plan.use_whatsapp && whatsappNumber ? (
-              <a 
-                href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}?text=Hi, I'm interested in the ${plan.label} plan for ${devices}`}
+      {/* Pricing Cards */}
+      {currentTab && (
+        <div className="pricing-cards">
+          {currentTab.plans.map((plan) => (
+            <article
+              key={plan.id}
+              className={`pricing-card ${plan.show_badge ? 'featured' : ''}`}
+              style={plan.show_badge && plan.badge_text ? {
+                '--badge-text': `"${plan.badge_text}"`
+              } : {}}
+            >
+              {/* Plan Title */}
+              <h3>{plan.title}</h3>
+
+              {/* Price */}
+              <div className="price">{plan.price}</div>
+
+              {/* Device Count */}
+              <div className="device-count">{currentTab.name}</div>
+
+              {/* Features */}
+              <ul className="features">
+                {plan.features.map((feature, idx) => (
+                  <li key={idx}>{feature}</li>
+                ))}
+              </ul>
+
+              {/* Buy Now Button */}
+              <a
                 className="buy-now"
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.preventDefault()
+                  handleCheckout(plan, currentTab.name)
+                }}
+                style={{ cursor: 'pointer' }}
               >
                 Buy Now
               </a>
-            ) : plan.buy_link ? (
-              <a 
-                href={ensureAbsoluteUrl(plan.buy_link)} 
-                className="buy-now"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Buy Now
-              </a>
-            ) : (
-              <button className="buy-now">Buy Now</button>
-            )}
-            <p style={{ margin: '10px 0 17px 0', color: '#aaa', fontSize: '13px', textAlign: 'center' }}>
-              Ready within 5-7mins
-            </p>
-            <img 
-              src="/images/images 1 (6).webp" 
-              alt="Payment methods" 
-              style={{ width: '50%', maxWidth: '120px', height: 'auto', margin: '0 auto', display: 'block' }}
-            />
-            {/* Removed badge rendering to avoid stray text below cards */}
-          </article>
-        ))}
-      </div>
+
+              {/* Ready within text */}
+              <p style={{
+                marginTop: '1rem',
+                fontSize: '0.85rem',
+                color: '#999',
+                textAlign: 'center'
+              }}>
+                Ready within 5-7mins
+              </p>
+
+              {/* Payment Icons */}
+              <img
+                src="/images/payment-icons.png"
+                alt="Payment Methods"
+                style={{
+                  maxWidth: '100%',
+                  height: 'auto',
+                  marginTop: '1rem',
+                  opacity: 0.7
+                }}
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   )
 }

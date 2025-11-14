@@ -39,7 +39,8 @@ export default function BlogPostPage() {
         return
       }
       const data = await res.json()
-      setBlog(data)
+      // Backend returns { success: true, blog: {...} }
+      setBlog(data.blog || data)
     } catch (error) {
       console.error('Error loading blog:', error)
       setError('Failed to load blog post')

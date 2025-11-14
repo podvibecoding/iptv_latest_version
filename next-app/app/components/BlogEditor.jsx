@@ -20,48 +20,6 @@ export default function BlogEditor({ value, onChange, placeholder = 'Start writi
       />
       
       <style jsx global>{`
-        /* Force white text in blog editor - HIGHEST PRIORITY */
-        .blog-editor-wrapper .w-md-editor-text-pre,
-        .blog-editor-wrapper .w-md-editor-text-input,
-        .blog-editor-wrapper .w-md-editor-text,
-        .blog-editor-wrapper .w-md-editor-area,
-        .blog-editor-wrapper .w-md-editor-area textarea,
-        .blog-editor-wrapper .w-md-editor-content,
-        .blog-editor-wrapper textarea {
-          color: #ffffff !important;
-          -webkit-text-fill-color: #ffffff !important;
-        }
-        
-        .blog-editor-wrapper .w-md-editor-text-pre *,
-        .blog-editor-wrapper .w-md-editor-text-input *,
-        .blog-editor-wrapper .w-md-editor-text *,
-        .blog-editor-wrapper .w-md-editor-area *,
-        .blog-editor-wrapper .w-md-editor-content * {
-          color: #ffffff !important;
-          -webkit-text-fill-color: #ffffff !important;
-        }
-        
-        /* Force white text in blog editor */
-        [data-color-mode="dark"] .w-md-editor-text-pre,
-        [data-color-mode="dark"] .w-md-editor-text-input,
-        [data-color-mode="dark"] .w-md-editor-text,
-        [data-color-mode="dark"] .w-md-editor-area,
-        [data-color-mode="dark"] .w-md-editor-area textarea,
-        [data-color-mode="dark"] .w-md-editor-content,
-        [data-color-mode="dark"] textarea {
-          color: #ffffff !important;
-          -webkit-text-fill-color: #ffffff !important;
-        }
-        
-        [data-color-mode="dark"] .w-md-editor-text-pre *,
-        [data-color-mode="dark"] .w-md-editor-text-input *,
-        [data-color-mode="dark"] .w-md-editor-text *,
-        [data-color-mode="dark"] .w-md-editor-area *,
-        [data-color-mode="dark"] .w-md-editor-content * {
-          color: #ffffff !important;
-          -webkit-text-fill-color: #ffffff !important;
-        }
-      
         .blog-editor-wrapper {
           margin: 1rem 0;
         }
@@ -125,7 +83,6 @@ export default function BlogEditor({ value, onChange, placeholder = 'Start writi
           -webkit-text-fill-color: #ffffff !important;
         }
         
-        /* Force all text elements to be white */
         .w-md-editor-text-pre *,
         .w-md-editor-text-input *,
         .w-md-editor-text * {
@@ -150,7 +107,6 @@ export default function BlogEditor({ value, onChange, placeholder = 'Start writi
           caret-color: #86ff00 !important;
         }
         
-        /* Target all possible text elements */
         .w-md-editor-area * {
           color: #ffffff !important;
           -webkit-text-fill-color: #ffffff !important;
@@ -172,7 +128,6 @@ export default function BlogEditor({ value, onChange, placeholder = 'Start writi
           background: #0f0f0f !important;
         }
         
-        /* Additional targeting for text editor */
         .w-md-editor .w-md-editor-text-pre > .token,
         .w-md-editor .w-md-editor-text-pre span {
           color: #ffffff !important;

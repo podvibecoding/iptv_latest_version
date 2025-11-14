@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
-import { getApiUrl } from '../lib/config'
+import { getApiUrl, getApiBase } from '../lib/config'
 
 export default function ChannelsPage() {
   const [channelImages, setChannelImages] = useState([])
@@ -13,6 +13,7 @@ export default function ChannelsPage() {
     const fetchChannelImages = async () => {
       try {
         const apiUrl = getApiUrl()
+        const apiBase = getApiBase()
         // Add timestamp to prevent caching
         const timestamp = new Date().getTime()
         const res = await fetch(`${apiUrl}/slider-images?section=channels&_t=${timestamp}`, {
@@ -28,7 +29,10 @@ export default function ChannelsPage() {
           console.log('📊 Channels API Response:', data.length, 'images')
           if (data && data.length > 0) {
             const newBuster = Date.now()
-            const imagesWithBuster = data.map(img => `${img.image_url}?v=${newBuster}`)
+            const imagesWithBuster = data.map(img => {
+              const imageUrl = img.image_url.startsWith('http') ? img.image_url : `${apiBase}${img.image_url}`
+              return `${imageUrl}?v=${newBuster}`
+            })
             console.log('✅ Setting channel images:', imagesWithBuster)
             setChannelImages(imagesWithBuster)
             setCacheBuster(newBuster)

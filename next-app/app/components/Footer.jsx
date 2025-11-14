@@ -18,15 +18,21 @@ export default function Footer() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
+        
         const apiUrl = getApiUrl()
         const apiBase = getApiBase()
         const res = await fetch(`${apiUrl}/settings?t=${Date.now()}`, {
+          signal: controller.signal,
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache'
           }
         })
+        
+        clearTimeout(timeoutId)
         if (!res.ok) return
         const data = await res.json()
         
@@ -55,7 +61,7 @@ export default function Footer() {
         if (data.whatsapp_number) setWhatsApp(data.whatsapp_number)
         if (data.copyright_text) setCopyrightText(data.copyright_text)
       } catch (e) {
-        console.error('Failed to load settings for footer:', e)
+        // Silent fail - backend not available
       }
     }
     loadSettings()

@@ -1,2 +1,2 @@
 # Uploads directory
-This directory stores uploaded logo images.
+# This file ensures the uploads directory is tracked by git

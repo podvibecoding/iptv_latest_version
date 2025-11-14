@@ -1,43 +1,53 @@
-// Shared API URL configuration
-// In development: uses Next.js proxy (/api -> localhost:5000/api)
-// In production: uses direct API URL (https://api.365upstream.com/api)
+// API URL Configuration
+// Development: http://localhost:5000/api
+// Production: https://api.365upstream.com/api
 export function getApiUrl() {
-  // Check if we're in browser (client-side)
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    
-    // In development (localhost), use relative URL - Next.js proxy handles it
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return '/api'; // No protocol/port - use Next.js proxy
-    }
-    
-    // In production, use the API subdomain with /api
-    return 'https://api.365upstream.com/api';
-  }
-  
-  // Server-side: use environment variable or fallback
+  // Priority 1: Environment variable (set at build time)
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
+
+  // Priority 2: Client-side detection
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    
+    // Development
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:5000/api';
+    }
+    
+    // Production - 365upstream.com
+    if (hostname === '365upstream.com' || hostname === 'www.365upstream.com') {
+      return 'https://api.365upstream.com/api';
+    }
+  }
   
+  // Priority 3: Default fallback (production)
   return 'https://api.365upstream.com/api';
 }
 
 export function getApiBase() {
-  // Check if we're in browser (client-side)
+  // Priority 1: Environment variable
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/api$/, '');
+  }
+
+  // Priority 2: Client-side detection
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     
-    // In development (localhost), return backend URL
+    // Development
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:5000';
     }
     
-    // In production, return base URL WITHOUT /api
-    return 'https://api.365upstream.com';
+    // Production
+    if (hostname === '365upstream.com' || hostname === 'www.365upstream.com') {
+      return 'https://api.365upstream.com';
+    }
   }
   
-  // Server-side: return base URL without /api
+  // Priority 3: Default fallback (production)
   return 'https://api.365upstream.com';
 }
 

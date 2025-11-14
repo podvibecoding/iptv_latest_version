@@ -8,17 +8,22 @@ export default function StructuredData() {
 
   useEffect(() => {
     const loadData = async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+      
       try {
         const apiUrl = getApiUrl()
         
         // Fetch plans
         const plansRes = await fetch(`${apiUrl}/plans?t=${Date.now()}`, {
+          signal: controller.signal,
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache'
           }
         })
+        clearTimeout(timeoutId)
         if (plansRes.ok) {
           const plansData = await plansRes.json()
           setPlans(plansData.slice(0, 8))
@@ -26,6 +31,7 @@ export default function StructuredData() {
 
         // Fetch FAQs
         const faqsRes = await fetch(`${apiUrl}/faqs?t=${Date.now()}`, {
+          signal: controller.signal,
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -37,7 +43,9 @@ export default function StructuredData() {
           setFaqs(faqsData)
         }
       } catch (error) {
-        console.error('Failed to load structured data:', error)
+        clearTimeout(timeoutId)
+        setPlans([])
+        setFaqs([])
       }
     }
     loadData()

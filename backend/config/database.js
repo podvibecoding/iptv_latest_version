@@ -1,63 +1,70 @@
 const mysql = require('mysql2/promise');
-require('dotenv').config();
 
-// Database configuration
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'iptv_database',
-  waitForConnections: true,
-  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
-  queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  // Reconnection settings
-  connectTimeout: 10000,
-  // Handle connection errors
-  timezone: '+00:00'
+let pool = null;
+let retryCount = 0;
+const maxRetries = 3;
+
+const createPool = () => {
+  return mysql.createPool({
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'iptv_database',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0
+  });
 };
 
-// Create connection pool for better performance
-const pool = mysql.createPool(dbConfig);
-
-// Handle pool errors
-pool.on('error', (err) => {
-  console.error('❌ Database pool error:', err.message);
-  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-    console.log('📡 Attempting to reconnect to database...');
-  }
-});
-
-// Test initial connection
-let connectionAttempts = 0;
-const maxAttempts = 3;
-
-const testConnection = async () => {
+const initDatabase = async () => {
   try {
+    if (!pool) {
+      pool = createPool();
+    }
+
     const connection = await pool.getConnection();
     console.log('✅ MySQL Database connected successfully');
-    console.log(`📊 Database: ${dbConfig.database}`);
-    console.log(`🔗 Connection pool size: ${dbConfig.connectionLimit}`);
-    connection.release();
-    return true;
-  } catch (err) {
-    connectionAttempts++;
-    console.error(`❌ MySQL Database connection failed (Attempt ${connectionAttempts}/${maxAttempts}):`, err.message);
+    console.log(`📊 Database: ${process.env.DB_NAME || 'iptv_database'}`);
+    console.log(`🔗 Connection pool size: ${pool.pool.config.connectionLimit}`);
     
-    if (connectionAttempts < maxAttempts) {
+    connection.release();
+    retryCount = 0;
+    return pool;
+  } catch (error) {
+    retryCount++;
+    console.error(`❌ MySQL Database connection failed (Attempt ${retryCount}/${maxRetries}):`, error.message);
+    
+    if (retryCount < maxRetries) {
       console.log(`⏳ Retrying in 3 seconds...`);
       await new Promise(resolve => setTimeout(resolve, 3000));
-      return testConnection();
+      return initDatabase();
     } else {
-      console.error('❌ Failed to connect to database after maximum attempts');
-      console.error('💡 Please check your database configuration in .env file');
-      return false;
+      console.error('❌ Max retry attempts reached. Database connection failed.');
+      throw error;
     }
   }
 };
 
-// Test connection on startup
-testConnection();
+const getPool = () => {
+  if (!pool) {
+    throw new Error('Database pool not initialized. Call initDatabase() first.');
+  }
+  return pool;
+};
 
-module.exports = pool;
+const closeDatabase = async () => {
+  if (pool) {
+    await pool.end();
+    console.log('Database connection closed');
+    pool = null;
+  }
+};
+
+module.exports = {
+  initDatabase,
+  getPool,
+  closeDatabase,
+  query: (...args) => getPool().query(...args)
+};

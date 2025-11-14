@@ -1,102 +1,165 @@
--- IPTV Admin Panel Database Schema
--- Run this SQL in your cPanel phpMyAdmin or MySQL terminal
+-- IPTV Admin Dashboard Database Schema
 
--- Create database (if not exists)
 CREATE DATABASE IF NOT EXISTS iptv_database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE iptv_database;
 
--- Admins table (for authentication)
+-- Admin users table
 CREATE TABLE IF NOT EXISTS admins (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  is_default_account BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Settings table (logo, contact info, etc.)
+-- Password reset tokens
+CREATE TABLE IF NOT EXISTS password_resets (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  email VARCHAR(255) NOT NULL,
+  token VARCHAR(255) NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_token (token),
+  INDEX idx_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Website settings
 CREATE TABLE IF NOT EXISTS settings (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  logo_url VARCHAR(500) DEFAULT NULL,
-  logo_text VARCHAR(100) DEFAULT NULL,
-  use_logo_image BOOLEAN DEFAULT TRUE COMMENT 'TRUE for image, FALSE for text',
-  contact_email VARCHAR(255) DEFAULT NULL,
-  whatsapp_number VARCHAR(50) DEFAULT NULL,
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  logo_url VARCHAR(255),
+  logo_text VARCHAR(255),
+  use_logo_image BOOLEAN DEFAULT TRUE,
+  logo_width INT DEFAULT 150,
+  favicon_url VARCHAR(255),
+  site_title VARCHAR(255),
+  site_description TEXT,
+  copyright_text VARCHAR(255),
+  contact_email VARCHAR(255),
+  whatsapp_number VARCHAR(50),
+  google_analytics_id VARCHAR(100),
+  google_analytics_measurement_id VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Plans table (pricing plans for 1, 2, 3, 6 devices)
-CREATE TABLE IF NOT EXISTS plans (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  device_tab ENUM('1', '2', '3', '6') NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  price VARCHAR(50) NOT NULL,
-  features TEXT NULL COMMENT 'JSON array of features',
-  display_order INT DEFAULT 0,
-  is_featured BOOLEAN DEFAULT FALSE,
-  buy_link VARCHAR(500) DEFAULT NULL COMMENT 'URL for Buy Now button',
+-- Hero section settings
+CREATE TABLE IF NOT EXISTS hero_settings (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  heading VARCHAR(255),
+  description TEXT,
+  focused_word VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Content sections (streaming, sports, channels, devices)
+CREATE TABLE IF NOT EXISTS sections (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  section_key VARCHAR(50) UNIQUE NOT NULL,
+  heading VARCHAR(255),
+  description TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_device_tab (device_tab),
-  UNIQUE KEY uniq_device_name (device_tab, name)
+  INDEX idx_section_key (section_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- FAQs table (dynamic Frequently Asked Questions)
+-- Section images (many-to-one relationship with sections)
+CREATE TABLE IF NOT EXISTS section_images (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  section_key VARCHAR(50) NOT NULL,
+  image_url VARCHAR(255) NOT NULL,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (section_key) REFERENCES sections(section_key) ON DELETE CASCADE,
+  INDEX idx_section_key (section_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pricing tabs
+CREATE TABLE IF NOT EXISTS pricing_tabs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(100) NOT NULL,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pricing plans
+CREATE TABLE IF NOT EXISTS plans (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  tab_id INT NOT NULL,
+  title VARCHAR(100) NOT NULL,
+  price VARCHAR(50) NOT NULL,
+  is_popular BOOLEAN DEFAULT FALSE,
+  use_whatsapp BOOLEAN DEFAULT FALSE,
+  checkout_link VARCHAR(255),
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (tab_id) REFERENCES pricing_tabs(id) ON DELETE CASCADE,
+  INDEX idx_tab_id (tab_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Plan features
+CREATE TABLE IF NOT EXISTS plan_features (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  plan_id INT NOT NULL,
+  feature_text VARCHAR(255) NOT NULL,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+  INDEX idx_plan_id (plan_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- FAQs
 CREATE TABLE IF NOT EXISTS faqs (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  question VARCHAR(500) NOT NULL,
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  question TEXT NOT NULL,
   answer TEXT NOT NULL,
   display_order INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_display_order (display_order)
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert default settings record
-INSERT INTO settings (id, logo_url, contact_email, whatsapp_number)
-VALUES (1, NULL, 'contact@yourdomain.com', '+1 555 123 4567')
+-- Blogs
+CREATE TABLE IF NOT EXISTS blogs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  title VARCHAR(255) NOT NULL,
+  slug VARCHAR(255) UNIQUE NOT NULL,
+  content LONGTEXT NOT NULL,
+  featured_image VARCHAR(255),
+  published BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_slug (slug),
+  INDEX idx_published (published)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Slider images (movies, sports sections)
+CREATE TABLE IF NOT EXISTS slider_images (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  section VARCHAR(50) NOT NULL,
+  image_url VARCHAR(255) NOT NULL,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_section (section)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Insert default settings row
+INSERT INTO settings (id, site_title, site_description, copyright_text, contact_email, whatsapp_number, use_logo_image, logo_width)
+VALUES (1, 'IPTV ACCESS - Best IPTV Service Provider', 'Stream 40,000+ channels and 54,000+ VOD', '© 2025 IPTV Services. All rights reserved.', 'contact@iptv.com', '+1234567890', TRUE, 150)
 ON DUPLICATE KEY UPDATE id=id;
 
--- Insert default admin (email: admin@site.com, password: admin123)
--- Password hash for 'admin123' using bcrypt
-INSERT INTO admins (email, password_hash)
-VALUES ('admin@site.com', '$2a$10$rZ6zYqvE8w3L0xQxH8ZW2.J8vKGYp0K8uPZj5qGQxN8aJ9KxN8vGW')
-ON DUPLICATE KEY UPDATE email=email;
-
--- Insert default plans (original hardcoded pricing)
-INSERT INTO plans (device_tab, name, price, features, display_order, is_featured) VALUES
--- 1 Device
-('1', '1 Month', '$10.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 1, 0),
-('1', '3 Months', '$24.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 2, 0),
-('1', '6 Months', '$39.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 3, 1),
-('1', '12 Months', '$59.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 4, 0),
--- 2 Devices
-('2', '1 Month', '$18.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 1, 0),
-('2', '3 Months', '$44.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 2, 0),
-('2', '6 Months', '$69.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 3, 1),
-('2', '12 Months', '$109.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 4, 0),
--- 3 Devices
-('3', '1 Month', '$24.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 1, 0),
-('3', '3 Months', '$64.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 2, 0),
-('3', '6 Months', '$109.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 3, 1),
-('3', '12 Months', '$179.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 4, 0),
--- 6 Devices
-('6', '1 Month', '$59.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 1, 0),
-('6', '3 Months', '$129.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 2, 0),
-('6', '6 Months', '$219.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 3, 1),
-('6', '12 Months', '$349.99', '["SD / HD / FHD / 4K Streams","40,000+ Live Channels with EPG","54,000+ VOD","VIP & Premium Channels","Anti-buffering Technology","24/7 Support"]', 4, 0)
-ON DUPLICATE KEY UPDATE 
-  price = VALUES(price),
-  features = VALUES(features),
-  display_order = VALUES(display_order),
-  is_featured = VALUES(is_featured);
-
--- Default FAQs (mirroring the original hardcoded list)
-INSERT INTO faqs (question, answer, display_order) VALUES
-('What is TITAN IPTV?', 'TITAN IPTV is a premium IPTV service offering access to over 40,000 live channels and 54,000+ VOD titles from around the world. Compatible with Smart TV, Android, iOS, Windows, and more.', 1),
-('How do I get started?', 'Simply choose a subscription plan, complete your purchase, and you\'ll receive login credentials via email within minutes. Install our app or configure your device, and start streaming immediately.', 2),
-('What devices are supported?', 'TITAN IPTV works on Smart TVs, Android devices, iOS (iPhone/iPad), Windows, Mac, Amazon Fire Stick, MAG boxes, and most IPTV-compatible devices.', 3),
-('Is there a free trial available?', 'Yes! We offer a free trial so you can test our service quality and channel selection before committing to a paid subscription.', 4),
-('Can I use one subscription on multiple devices?', 'Our plans support multiple connections depending on the package you choose. Check the pricing section for details on simultaneous device usage.', 5),
-('What if I experience buffering or technical issues?', 'Our support team is available 24/7 to help with any technical issues. We also provide setup guides and troubleshooting resources to ensure smooth streaming.', 6)
+-- Insert default hero settings
+INSERT INTO hero_settings (id, heading, description, focused_word)
+VALUES (1, 'Premium IPTV Service', 'Stream unlimited channels and content', 'Premium')
 ON DUPLICATE KEY UPDATE id=id;
+
+-- Insert default sections
+INSERT INTO sections (section_key, heading, description) VALUES
+('streaming', 'Streaming Services', 'Watch all major streaming content'),
+('sports', 'Major Sports Events', 'Never miss a game'),
+('channels', 'Channel Categories', 'Thousands of channels worldwide'),
+('devices', 'Supported Devices', 'Watch on any device')
+ON DUPLICATE KEY UPDATE heading=VALUES(heading);
